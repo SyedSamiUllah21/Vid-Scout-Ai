@@ -78,7 +78,7 @@ const DescriptionGenerator = () => {
 
             {/* ── Header card — purple + cyan gradient ── */}
             <div style={{
-              background: 'linear-gradient(135deg, rgba(168,85,247,0.12), rgba(6,182,212,0.08))',
+              background: 'rgba(0, 0, 0, 0.85)',
               border: '1px solid rgba(168,85,247,0.3)',
               borderRadius: '16px',
               padding: '22px 28px',
@@ -131,7 +131,7 @@ const DescriptionGenerator = () => {
 
             {/* ── Title card — yellow ── */}
             <div style={{
-              background: 'linear-gradient(135deg, rgba(234,179,8,0.08), rgba(249,115,22,0.05))',
+              background: 'rgba(0, 0, 0, 0.85)',
               border: '1px solid rgba(234,179,8,0.25)',
               borderRadius: '16px', padding: '20px 24px',
               display: 'flex', alignItems: 'center', gap: '18px',
@@ -159,7 +159,7 @@ const DescriptionGenerator = () => {
 
             {/* ── Description card — green ── */}
             <div style={{
-              background: 'linear-gradient(135deg, rgba(34,197,94,0.08), rgba(6,182,212,0.05))',
+              background: 'rgba(0, 0, 0, 0.85)',
               border: '1px solid rgba(34,197,94,0.22)',
               borderRadius: '16px', padding: '20px 24px',
               display: 'flex', alignItems: 'flex-start', gap: '18px',
@@ -201,7 +201,7 @@ const DescriptionGenerator = () => {
 
             {/* ── Hashtags card — blue ── */}
             <div style={{
-              background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(6,182,212,0.06))',
+              background: 'rgba(0, 0, 0, 0.85)',
               border: '1px solid rgba(59,130,246,0.25)',
               borderRadius: '16px', padding: '20px 24px',
               display: 'flex', alignItems: 'flex-start', gap: '18px',
@@ -245,7 +245,7 @@ const DescriptionGenerator = () => {
 
             {/* ── Pro Tip — orange accent ── */}
             <div style={{
-              background: 'linear-gradient(135deg, rgba(249,115,22,0.07), rgba(234,179,8,0.05))',
+              background: 'rgba(0, 0, 0, 0.85)',
               border: '1px solid rgba(249,115,22,0.2)',
               borderRadius: '12px', padding: '14px 20px',
               display: 'flex', alignItems: 'center', gap: '12px',
