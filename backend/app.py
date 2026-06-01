@@ -3079,6 +3079,78 @@ def analyze_thumbnail():
         return jsonify({"error": f"Vision analysis failed: {str(exc)}"}), 500
 
 
+@app.route("/api/description-generate", methods=["POST"])
+def generate_description():
+    groq_key = get_groq_api_key()
+    if not groq_key:
+        return jsonify({"error": "Groq API Key is missing. Add GROQ_API_KEY to your .env file."}), 400
+
+    data = request.get_json(force=True)
+    title  = data.get("title", "").strip()
+    script = data.get("script", "").strip()
+
+    if not title:
+        return jsonify({"error": "Video title is required."}), 400
+    if not script:
+        return jsonify({"error": "Script or summary is required."}), 400
+    if len(title) > 300:
+        return jsonify({"error": "Title is too long (max 300 characters)."}), 400
+    if len(script) > 8000:
+        return jsonify({"error": "Script is too long (max 8000 characters)."}), 400
+
+    system_prompt = (
+        "You are an expert YouTube SEO copywriter. Your task is to generate a fully "
+        "SEO-optimized YouTube video description based on the provided title and script.\n\n"
+        "Return ONLY a raw JSON object (no markdown, no backticks) with this exact schema:\n"
+        "{\n"
+        '  "title": "The exact video title provided by the user",\n'
+        '  "description": "4-5 lines of compelling, keyword-rich description text. '
+        'Start with a strong hook sentence. Include the main topic, key points covered, '
+        'and a call-to-action (like, subscribe, comment). Each line separated by \\n.",\n'
+        '  "hashtags": ["#Tag1", "#Tag2", "#Tag3", "#Tag4"]\n'
+        "}\n\n"
+        "RULES:\n"
+        "- description must be 4-5 lines, each line 1-2 sentences, separated by \\n\n"
+        "- hashtags must be exactly 3-4 items, highly relevant, no spaces inside tags\n"
+        "- Use natural keyword placement — do NOT keyword-stuff\n"
+        "- The description should feel human, engaging, and click-worthy\n"
+        "- Return ONLY the JSON object, nothing else"
+    )
+
+    human_prompt = (
+        f"Video Title: {title}\n\n"
+        f"Script / Summary:\n{script[:4000]}\n\n"
+        "Generate the SEO-optimized YouTube description now."
+    )
+
+    try:
+        print(f"[Description] Generating for: {title}", flush=True)
+        content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.7, max_tokens=600)
+        result  = parse_llm_json(content, context="description_generate")
+
+        # Validate and normalise
+        if isinstance(result, dict):
+            title_out  = result.get("title", title)
+            desc_out   = result.get("description", "")
+            tags_out   = result.get("hashtags", [])
+
+            # Ensure hashtags start with #
+            tags_out = [t if t.startswith("#") else f"#{t}" for t in tags_out if t]
+
+            return jsonify({
+                "title":       title_out,
+                "description": desc_out,
+                "hashtags":    tags_out[:4],
+            })
+        else:
+            raise ValueError("Unexpected response format from LLM.")
+
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/community-generate", methods=["POST"])
 @limiter.limit("10 per minute")
 def generate_community_posts():

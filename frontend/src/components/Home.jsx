@@ -1,7 +1,22 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Home = ({ setActiveView }) => {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [showAbout, setShowAbout]       = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const hexToRgb = (hex) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '255, 255, 255';
@@ -52,7 +67,7 @@ const Home = ({ setActiveView }) => {
       title: 'Community Posts',
       description: 'Keep your audience engaged between uploads.',
       icon: 'fa-users-rectangle',
-      color: '#06b6d4',
+      color: '#22c55e',
       marketingTitle: 'Boost Audience Engagement',
       marketingText: 'Keep your audience engaged between uploads. Auto-generate interactive polls, questions, and behind-the-scenes posts tailored to your niche.',
       tags: [
@@ -112,6 +127,20 @@ const Home = ({ setActiveView }) => {
         { icon: 'fa-solid fa-fire', text: 'Viral SEO' },
         { icon: 'fa-solid fa-magnifying-glass-chart', text: 'Search Ranking' }
       ]
+    },
+    {
+      id: 'view-description',
+      title: 'Description Generator',
+      description: 'Generate SEO-optimized YouTube descriptions with hashtags from your title and script.',
+      icon: 'fa-file-lines',
+      color: '#06b6d4',
+      marketingTitle: 'Write Once. Rank Forever.',
+      marketingText: 'Paste your title and script — our AI crafts a keyword-rich description with a compelling hook, key points, and viral hashtags ready to paste into YouTube Studio.',
+      tags: [
+        { icon: 'fa-solid fa-magnifying-glass-chart', text: 'SEO Optimized' },
+        { icon: 'fa-solid fa-hashtag', text: 'Viral Hashtags' },
+        { icon: 'fa-solid fa-copy', text: '1-Click Copy' }
+      ]
     }
   ];
 
@@ -128,17 +157,191 @@ const Home = ({ setActiveView }) => {
 
   return (
     <div className="home-dashboard" style={{ position: 'relative' }}>
-      
-      {/* Top Left Logo */}
-      <div style={{ position: 'absolute', top: '35px', left: '45px', display: 'flex', alignItems: 'center', gap: '12px', zIndex: 50 }}>
-        <div style={{ background: '#ff2a2a', borderRadius: '6px', width: '38px', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(255, 42, 42, 0.4)' }}>
-          <i className="fa-solid fa-play" style={{ color: '#550000', fontSize: '0.8rem', marginLeft: '3px' }}></i>
+
+      {/* ── Navbar ── */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '18px 40px',
+        background: 'linear-gradient(180deg, rgba(10,5,20,0.85) 0%, transparent 100%)',
+        backdropFilter: 'blur(8px)',
+      }}>
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+          <div style={{ background: '#ff2a2a', borderRadius: '6px', width: '34px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 16px rgba(255,42,42,0.5)' }}>
+            <i className="fa-solid fa-play" style={{ color: '#550000', fontSize: '0.75rem', marginLeft: '2px' }}></i>
+          </div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 900, letterSpacing: '0.5px', display: 'flex', gap: '6px' }}>
+            <span style={{ color: '#fff' }}>VID SCOUT</span>
+            <span style={{ color: '#a855f7', textShadow: '0 0 12px rgba(168,85,247,0.7)' }}>AI</span>
+          </div>
         </div>
-        <div style={{ fontSize: '1.6rem', fontWeight: '900', letterSpacing: '0.5px', display: 'flex', gap: '8px' }}>
-          <span style={{ color: '#fff' }}>VID SCOUT</span>
-          <span style={{ color: '#a855f7', textShadow: '0 0 15px rgba(168, 85, 247, 0.6)' }}>AI</span>
+
+        {/* Nav links */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+
+          {/* All Tools dropdown */}
+          <div ref={dropdownRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setDropdownOpen(o => !o)}
+              style={{
+                background: dropdownOpen ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${dropdownOpen ? 'rgba(168,85,247,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: '10px', padding: '9px 18px',
+                color: '#fff', fontSize: '0.9rem', fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                transition: 'all 0.2s',
+              }}
+            >
+              <i className="fa-solid fa-grid-2" style={{ color: '#a855f7', fontSize: '0.85rem' }}></i>
+              All Tools
+              <i className={`fa-solid fa-chevron-${dropdownOpen ? 'up' : 'down'}`} style={{ fontSize: '0.7rem', opacity: 0.6 }}></i>
+            </button>
+
+            <AnimatePresence>
+              {dropdownOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                  transition={{ duration: 0.15 }}
+                  style={{
+                    position: 'absolute', top: 'calc(100% + 10px)', right: 0,
+                    background: 'rgba(14,8,28,0.97)',
+                    border: '1px solid rgba(168,85,247,0.25)',
+                    borderRadius: '14px', padding: '8px',
+                    minWidth: '240px',
+                    boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 0 1px rgba(168,85,247,0.1)',
+                    backdropFilter: 'blur(20px)',
+                    zIndex: 200,
+                  }}
+                >
+                  {tools.map(tool => (
+                    <button
+                      key={tool.id}
+                      onClick={() => { setActiveView(tool.id); setDropdownOpen(false); }}
+                      style={{
+                        width: '100%', background: 'transparent',
+                        border: 'none', borderRadius: '9px',
+                        padding: '10px 14px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '12px',
+                        transition: 'all 0.15s', textAlign: 'left',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(168,85,247,0.1)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{
+                        width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
+                        background: `${tool.color}20`, border: `1px solid ${tool.color}40`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <i className={`fa-solid ${tool.icon}`} style={{ color: tool.color, fontSize: '0.85rem' }}></i>
+                      </div>
+                      <div>
+                        <p style={{ color: '#fff', fontSize: '0.88rem', fontWeight: 600, margin: 0 }}>{tool.title}</p>
+                        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', margin: 0, marginTop: '1px' }}>{tool.description.substring(0, 45)}…</p>
+                      </div>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* About */}
+          <button
+            onClick={() => setShowAbout(true)}
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '10px', padding: '9px 18px',
+              color: '#fff', fontSize: '0.9rem', fontWeight: 700,
+              cursor: 'pointer', transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,0.1)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.2)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.1)'; }}
+          >
+            About
+          </button>
         </div>
       </div>
+
+      {/* ── About Modal ── */}
+      <AnimatePresence>
+        {showAbout && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowAbout(false)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 500,
+              background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '20px',
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'rgba(14,8,28,0.98)',
+                border: '1px solid rgba(168,85,247,0.3)',
+                borderRadius: '20px', padding: '40px',
+                maxWidth: '560px', width: '100%',
+                boxShadow: '0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(168,85,247,0.1)',
+              }}
+            >
+              {/* Modal header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ background: '#ff2a2a', borderRadius: '8px', width: '40px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 16px rgba(255,42,42,0.5)' }}>
+                    <i className="fa-solid fa-play" style={{ color: '#550000', fontSize: '0.8rem', marginLeft: '2px' }}></i>
+                  </div>
+                  <div style={{ fontSize: '1.3rem', fontWeight: 900, display: 'flex', gap: '6px' }}>
+                    <span style={{ color: '#fff' }}>VID SCOUT</span>
+                    <span style={{ color: '#a855f7' }}>AI</span>
+                  </div>
+                </div>
+                <button onClick={() => setShowAbout(false)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', width: '34px', height: '34px', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              {/* Content */}
+              <p style={{ fontSize: '1.05rem', color: 'rgba(255,255,255,0.85)', lineHeight: 1.75, marginBottom: '24px' }}>
+                <strong style={{ color: '#fff' }}>VID Scout AI</strong> is an all-in-one YouTube research and content creation toolkit powered by AI. It helps creators grow faster by combining real-time trend research, SEO tools, and AI-generated content — all in one place.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '28px' }}>
+                {[
+                  { icon: 'fa-chart-simple', color: '#ff2a2a', label: 'Channel Analytics' },
+                  { icon: 'fa-lightbulb', color: '#a855f7', label: 'Trending Ideas' },
+                  { icon: 'fa-magnifying-glass', color: '#3b82f6', label: 'Keyword Research' },
+                  { icon: 'fa-pen-nib', color: '#14b8a6', label: 'AI Script Writer' },
+                  { icon: 'fa-image', color: '#eab308', label: 'Thumbnail Analyzer' },
+                  { icon: 'fa-tags', color: '#ec4899', label: 'Tags Generator' },
+                  { icon: 'fa-file-lines', color: '#06b6d4', label: 'Description Generator' },
+                  { icon: 'fa-users-rectangle', color: '#22c55e', label: 'Community Posts' },
+                ].map((f, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <i className={`fa-solid ${f.icon}`} style={{ color: f.color, fontSize: '1rem', width: '18px', textAlign: 'center' }}></i>
+                    <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', fontWeight: 600 }}>{f.label}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ padding: '14px 18px', background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: '10px', fontSize: '0.82rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>
+                <i className="fa-solid fa-circle-info" style={{ color: '#a855f7', marginRight: '8px' }}></i>
+                Built for YouTube creators who want to grow smarter, not harder. Powered by AI, YouTube Data, and real-time web research.
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div 
         className="home-hero-full" 
@@ -252,10 +455,10 @@ const Home = ({ setActiveView }) => {
                       whileInView={{ opacity: 1, x: 0 }}
                       viewport={{ once: false, amount: 0.3 }}
                       transition={{ duration: 0.6, delay: 0.2 }}
-                      style={{ flex: 1, textAlign: 'right', paddingRight: '20px' }}
+                      style={{ width: '35%', flexShrink: 0, textAlign: 'left', paddingRight: '20px' }}
                     >
-                      <h3 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.2rem)', color: tool.color, marginBottom: '16px', fontWeight: 800, letterSpacing: '-0.5px' }}>{tool.marketingTitle}</h3>
-                      <p style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.15rem)', color: 'var(--text-muted)', lineHeight: 1.6, fontWeight: 500 }}>{tool.marketingText}</p>
+                      <h3 style={{ fontSize: 'clamp(1.3rem, 3vw, 2rem)', color: tool.color, marginBottom: '14px', fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1.2 }}>{tool.marketingTitle}</h3>
+                      <p style={{ fontSize: 'clamp(0.85rem, 1.2vw, 1rem)', color: 'var(--text-muted)', lineHeight: 1.7, fontWeight: 500 }}>{tool.marketingText}</p>
                     </motion.div>
                   )}
 
@@ -370,10 +573,10 @@ const Home = ({ setActiveView }) => {
                       whileInView={{ opacity: 1, x: 0 }}
                       viewport={{ once: false, amount: 0.3 }}
                       transition={{ duration: 0.6, delay: 0.2 }}
-                      style={{ flex: 1, textAlign: 'left', paddingLeft: '20px' }}
+                      style={{ width: '35%', flexShrink: 0, textAlign: 'left', paddingLeft: '20px' }}
                     >
-                      <h3 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.2rem)', color: tool.color, marginBottom: '16px', fontWeight: 800, letterSpacing: '-0.5px' }}>{tool.marketingTitle}</h3>
-                      <p style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.15rem)', color: 'var(--text-muted)', lineHeight: 1.6, fontWeight: 500 }}>{tool.marketingText}</p>
+                      <h3 style={{ fontSize: 'clamp(1.3rem, 3vw, 2rem)', color: tool.color, marginBottom: '14px', fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1.2 }}>{tool.marketingTitle}</h3>
+                      <p style={{ fontSize: 'clamp(0.85rem, 1.2vw, 1rem)', color: 'var(--text-muted)', lineHeight: 1.7, fontWeight: 500 }}>{tool.marketingText}</p>
                     </motion.div>
                   )}
 

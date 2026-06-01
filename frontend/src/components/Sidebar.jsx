@@ -11,6 +11,7 @@ const Sidebar = ({ activeView, setActiveView, isSidebarOpen, setIsSidebarOpen })
     { id: 'view-thumbnail', icon: 'fa-image', label: 'Thumbnail Analyzer', isRegular: true },
     { id: 'view-tags', icon: 'fa-tags', label: 'Tags Generator', isRegular: false },
     { id: 'view-community', icon: 'fa-users-rectangle', label: 'Community Posts', isRegular: false },
+    { id: 'view-description', icon: 'fa-file-lines', label: 'Description Generator', isRegular: false },
   ];
 
   return (
@@ -27,8 +28,8 @@ const Sidebar = ({ activeView, setActiveView, isSidebarOpen, setIsSidebarOpen })
           </button>
 
           <div className="logo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: 0, padding: 0, width: '100%' }}>
-            <i className="fa-brands fa-youtube" style={{ color: '#ff2a2a', filter: 'drop-shadow(0 0 8px rgba(255, 42, 42, 0.75))', fontSize: '1.2rem' }}></i>
-            <h1 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '800', letterSpacing: '1px', color: 'var(--text-bright)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <i className="fa-brands fa-youtube" style={{ color: '#ff2a2a', filter: 'drop-shadow(0 0 8px rgba(255, 42, 42, 0.75))', fontSize: '1.6rem' }}></i>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '900', letterSpacing: '1px', color: 'var(--text-bright)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '5px' }}>
               VID SCOUT <span style={{ color: '#a855f7', textShadow: '0 0 10px rgba(168, 85, 247, 0.5)' }}>AI</span>
             </h1>
           </div>

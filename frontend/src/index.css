@@ -2694,10 +2694,18 @@ select#trendTimeframe option:checked {
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  gap: 50px;
+  gap: 40px;
 }
 .tool-card-grid-item {
   width: 65%;
+  flex-shrink: 0;
+}
+.marketing-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-self: center;
+  min-width: 0;
 }
 
 @media (max-width: 900px) {

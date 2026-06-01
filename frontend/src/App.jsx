@@ -8,6 +8,7 @@ import AIScriptWriter from './components/AIScriptWriter';
 import ThumbnailAnalyzer from './components/ThumbnailAnalyzer';
 import TagsGenerator from './components/TagsGenerator';
 import CommunityPosts from './components/CommunityPosts';
+import DescriptionGenerator from './components/DescriptionGenerator';
 import Home from './components/Home';
 import './index.css';
 
@@ -81,6 +82,9 @@ function App() {
           </div>
           <div style={{ display: activeView === 'view-community' ? 'contents' : 'none' }}>
             <CommunityPosts />
+          </div>
+          <div style={{ display: activeView === 'view-description' ? 'contents' : 'none' }}>
+            <DescriptionGenerator />
           </div>
         </main>
       </div>
