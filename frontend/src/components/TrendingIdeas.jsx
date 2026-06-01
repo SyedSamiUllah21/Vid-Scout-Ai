@@ -66,7 +66,7 @@ const TrendingIdeas = () => {
           <button className="dash-back-btn" onClick={reset}>← Back to Generator</button>
 
           {/* Header */}
-          <div className="header-card glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 32px' }}>
+          <div className="header-card glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 32px', background: '#000000' }}>
             <div>
               <p style={{ color: '#a855f7', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>
                 <i className="fa-solid fa-robot" style={{ marginRight: '6px' }}></i>8-Step AI Research Agent

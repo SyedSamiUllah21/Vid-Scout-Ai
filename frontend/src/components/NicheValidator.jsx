@@ -129,7 +129,7 @@ const NicheValidator = () => {
           
           <div className="results-container" style={{ width: '100%' }}>
             
-            <div className="glass-card" style={{ padding: '40px', display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.5fr', gap: '40px', alignItems: 'center' }}>
+            <div className="glass-card" style={{ padding: '40px', display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.5fr', gap: '40px', alignItems: 'center', background: '#000000' }}>
               
               {/* Left Column */}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -201,7 +201,7 @@ const NicheValidator = () => {
 
             {/* Middle Section */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '24px' }}>
-              <div className="glass-card" style={{ padding: '32px', position: 'relative', overflow: 'hidden' }}>
+              <div className="glass-card" style={{ padding: '32px', position: 'relative', overflow: 'hidden', background: '#000000' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                   <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', boxShadow: '0 0 15px rgba(34,197,94,0.3)' }}>
                     <i className="fa-solid fa-dollar-sign" style={{ filter: 'drop-shadow(0 0 5px rgba(34,197,94,0.8))' }}></i>
@@ -221,7 +221,7 @@ const NicheValidator = () => {
                 </div>
               </div>
 
-              <div className="glass-card" style={{ padding: '32px', position: 'relative', overflow: 'hidden' }}>
+              <div className="glass-card" style={{ padding: '32px', position: 'relative', overflow: 'hidden', background: '#000000' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                   <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(234, 179, 8, 0.1)', color: '#eab308', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', boxShadow: '0 0 15px rgba(234, 179, 8, 0.2)' }}>
                     <i className="fa-solid fa-users"></i>
@@ -241,7 +241,7 @@ const NicheValidator = () => {
 
             {/* Bottom Section */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '24px' }}>
-              <div className="glass-card" style={{ padding: '32px' }}>
+              <div className="glass-card" style={{ padding: '32px', background: '#000000' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
                   <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <i className="fa-regular fa-thumbs-up" style={{ filter: 'drop-shadow(0 0 5px rgba(59,130,246,0.5))' }}></i>
@@ -258,7 +258,7 @@ const NicheValidator = () => {
                 </div>
               </div>
 
-              <div className="glass-card" style={{ padding: '32px' }}>
+              <div className="glass-card" style={{ padding: '32px', background: '#000000' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
                   <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#ef4444', margin: 0, textShadow: '0 0 8px rgba(239,68,68,0.5)' }}>CONS</h3>
                 </div>

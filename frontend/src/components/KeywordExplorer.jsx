@@ -151,7 +151,7 @@ const KeywordExplorer = () => {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
-            <div className="glass-card" style={{ padding: '28px 24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div className="glass-card" style={{ padding: '28px 24px', display: 'flex', alignItems: 'center', gap: '20px', background: '#000000' }}>
               <div style={{ minWidth: '56px', height: '56px', borderRadius: '14px', background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', fontSize: '1.5rem', boxShadow: '0 0 15px rgba(239, 68, 68, 0.3)' }}>
                 <i className="fa-solid fa-arrow-trend-up" style={{ filter: 'drop-shadow(0 0 5px rgba(239, 68, 68, 0.8))' }}></i>
               </div>
@@ -162,7 +162,7 @@ const KeywordExplorer = () => {
               </div>
             </div>
 
-            <div className="glass-card" style={{ padding: '28px 24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div className="glass-card" style={{ padding: '28px 24px', display: 'flex', alignItems: 'center', gap: '20px', background: '#000000' }}>
               <div style={{ minWidth: '56px', height: '56px', borderRadius: '14px', background: 'rgba(249, 115, 22, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f97316', fontSize: '1.5rem', boxShadow: '0 0 15px rgba(249, 115, 22, 0.3)' }}>
                 <i className="fa-solid fa-chart-simple" style={{ filter: 'drop-shadow(0 0 5px rgba(249, 115, 22, 0.8))' }}></i>
               </div>
@@ -173,7 +173,7 @@ const KeywordExplorer = () => {
               </div>
             </div>
 
-            <div className="glass-card" style={{ padding: '28px 24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div className="glass-card" style={{ padding: '28px 24px', display: 'flex', alignItems: 'center', gap: '20px', background: '#000000' }}>
               <div style={{ minWidth: '56px', height: '56px', borderRadius: '14px', background: 'rgba(168, 85, 247, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a855f7', fontSize: '1.5rem', boxShadow: '0 0 15px rgba(168, 85, 247, 0.3)' }}>
                 <i className="fa-solid fa-trophy" style={{ filter: 'drop-shadow(0 0 5px rgba(168, 85, 247, 0.8))' }}></i>
               </div>
@@ -184,7 +184,7 @@ const KeywordExplorer = () => {
               </div>
             </div>
 
-            <div className="glass-card" style={{ padding: '28px 24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div className="glass-card" style={{ padding: '28px 24px', display: 'flex', alignItems: 'center', gap: '20px', background: '#000000' }}>
               <div style={{ minWidth: '56px', height: '56px', borderRadius: '14px', background: 'rgba(34, 197, 94, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e', fontSize: '1.5rem', boxShadow: '0 0 15px rgba(34, 197, 94, 0.3)' }}>
                 <i className={`fa-solid ${getTrendingIcon(results.trending_status)}`} style={{ filter: 'drop-shadow(0 0 5px rgba(34, 197, 94, 0.8))' }}></i>
               </div>
@@ -196,7 +196,7 @@ const KeywordExplorer = () => {
             </div>
           </div>
 
-          <div className="glass-card" style={{ padding: '32px' }}>
+          <div className="glass-card" style={{ padding: '32px', background: '#000000' }}>
             <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff', marginBottom: '32px' }}>Related Keyword Opportunities</h3>
 
             {results.related_keywords && results.related_keywords.length > 0 ? (
