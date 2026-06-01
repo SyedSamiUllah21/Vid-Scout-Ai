@@ -81,7 +81,7 @@ def get_groq_api_key():
 def get_openrouter_api_keys() -> list[str]:
     """Return all available OpenRouter API keys for failover."""
     keys = []
-    for var in ["OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2"]:
+    for var in ["OPENROUTER_API_KEY", "OPENROUTER_API_KEY_2", "OPENROUTER_API_KEY_3"]:
         k = _get_env(var)
         if k:
             keys.append(k)
@@ -2049,198 +2049,135 @@ def ra_aggregator(state: NicheResearchState) -> dict:
 
 # ── LLM Synthesizer Node ──────────────────────────────────────────────────────
 def ra_synthesizer(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] SYNTHESIZER — Generating 10 ranked video ideas")
+    logger.info("[ResearchAgent] SYNTHESIZER — Generating 5 best viral video ideas")
     custom_prompt = state.get("custom_system_prompt", "")
     niche = state["channel_niche"]
     keywords = state["channel_keywords"]
     web_block = state["web_block"]
 
-    # Extract YouTube sources specifically for the output
+    # YouTube style reference (channel's recent videos for tone/format only)
     yt_sources = [s for s in state.get("all_sources", []) if "youtube.com" in s.get("url", "")]
-    yt_block = "\n".join(
-        f"[YouTube] {r['title'][:100]} — {r['url']}"
-        for r in yt_sources[:15]
-    ) or "No YouTube signals found."
+    yt_style = "\n".join(
+        f"- {r['title'][:80]}" for r in yt_sources[:5]
+    ) or "No recent uploads found."
 
+    # ── Compact, token-efficient system prompt ────────────────────────────────
     system_prompt = (
-        "You are an elite YouTube video strategist. Your job: analyze research data and create 10 viral video ideas.\n\n"
-        f"CHANNEL CONTEXT:\n{custom_prompt}\n\n"
-        "OUTPUT FORMAT (return ONLY this JSON, no markdown):\n"
-        '{"ideas": [\n'
-        '  {"rank": 1, "viral_score": 88, "title": "Why Dark Psychology is Trending in 2025", \n'
-        '   "hook": "Most people don\'t realize they\'re being manipulated every day...", \n'
-        '   "core_angle": "Expose manipulation tactics used in daily life", \n'
-        '   "why_trending": "Recent viral TikTok exposed psychological manipulation", \n'
-        '   "trend_sources": [{"platform": "Google News", "title": "...", "url": "..."}], \n'
-        '   "seo_keywords": ["dark psychology", "manipulation", "mind control"], \n'
-        '   "best_format": "Standard", "format_reason": "Deep dive format", \n'
-        '   "risk_level": "Medium", "description": "Explore psychological manipulation tactics"}\n'
-        '], "trend_summary": "..."}\n\n'
-        "CRITICAL RULES:\n"
-        "1. Titles MUST be compelling YouTube titles (40-80 chars), NOT raw keywords\n"
-        "2. Example GOOD: 'Why Dark Psychology is Trending in 2025'\n"
-        "3. Example BAD: '[High Search Volume] dark psychology'\n"
-        "4. Base ALL ideas on the research data provided\n"
-        "5. Return ONLY the JSON object, no extra text\n"
-        "6. Escape all quotes inside strings with backslash"
+        "You are an elite YouTube strategist. Analyze the research data and generate "
+        "5 viral video ideas for the given channel niche.\n\n"
+        f"Channel context: {custom_prompt[:300]}\n\n"
+        "Return ONLY this JSON (no markdown, no extra text):\n"
+        '{"ideas":[{"rank":1,"viral_score":92,"title":"Compelling 50-char YouTube title",'
+        '"hook":"First 15-second opening line that grabs attention",'
+        '"core_angle":"The unique angle that makes this video stand out",'
+        '"why_trending":"Specific reason this is trending RIGHT NOW based on research",'
+        '"trend_sources":[{"platform":"Google News","title":"Source title","url":"https://..."}],'
+        '"seo_keywords":["kw1","kw2","kw3"],'
+        '"best_format":"Standard","risk_level":"Low",'
+        '"description":"2-sentence video concept"}],'
+        '"trend_summary":"2-sentence summary of dominant trends found"}\n\n'
+        "RULES:\n"
+        "- Titles: compelling, 40-70 chars, NOT raw keywords\n"
+        "- GOOD: 'The Dark Truth About Mind Control Nobody Talks About'\n"
+        "- BAD: '[High Search Volume] dark psychology'\n"
+        "- Every idea must be backed by actual research data below\n"
+        "- Rank by viral potential (highest first)"
     )
 
+    # ── Compact human prompt with research data ───────────────────────────────
     human_prompt = (
-        f"CHANNEL NICHE: {niche}\n"
-        f"TARGET KEYWORDS: {', '.join(keywords[:6])}\n\n"
-        f"=== 8-STEP RESEARCH DATA ===\n{web_block[:8000]}\n\n"
-        f"=== YOUTUBE STYLE REFERENCE ===\n{yt_block[:1000]}\n\n"
-        "TASK: Generate 10 ranked video ideas.\n\n"
-        "REQUIREMENTS:\n"
-        "- Each title must be a proper YouTube title (e.g., 'The Dark Truth About Mind Control')\n"
-        "- NOT raw keywords (e.g., NOT '[High Search Volume] mind control')\n"
-        "- Base ideas on the research data above\n"
-        "- Prioritize trending topics from News, Reddit, Twitter, Blogs\n"
-        "- Use YouTube data only for style/format reference\n"
-        "- Include compelling hooks and clear angles\n\n"
-        "Return the JSON now:"
+        f"NICHE: {niche}\n"
+        f"KEYWORDS: {', '.join(keywords[:5])}\n"
+        f"CHANNEL STYLE (recent uploads):\n{yt_style}\n\n"
+        f"RESEARCH DATA (8 sources):\n{web_block[:6000]}\n\n"
+        "Generate 5 best viral ideas based on this research. Return JSON only."
     )
 
-    try:
-        # First attempt: Standard synthesis
-        logger.info("[ResearchAgent] Synthesizer attempt 1: Standard synthesis")
-        content = call_groq_api_with_retries(
-            system_prompt, human_prompt, temperature=0.8, max_tokens=6000, require_json=False
-        )
-        
-        # Log the raw response for debugging
-        logger.info(f"[ResearchAgent] Synthesizer response length: {len(content)} chars")
-        logger.info(f"[ResearchAgent] Response preview: {content[:300]}")
-        
-        # Try to parse the JSON
-        parsed = parse_llm_json(content, context="ra_synthesizer")
-        ideas = parsed.get("ideas", [])
-        trend_summary = parsed.get("trend_summary", "")
-        
-        # Validate ideas quality
-        if ideas and len(ideas) >= 5:
-            # Check if titles look like proper YouTube titles (not raw keywords)
-            good_titles = 0
-            for idea in ideas:
-                title = idea.get("title", "")
-                # Bad patterns: starts with [, contains "search volume", all lowercase, etc.
-                if title and not title.startswith("[") and "search volume" not in title.lower() and len(title) > 20:
-                    good_titles += 1
-            
-            if good_titles >= 5:
-                logger.info(f"[ResearchAgent] Synthesis SUCCESS: {len(ideas)} ideas, {good_titles} good titles")
-            else:
-                logger.warning(f"[ResearchAgent] Synthesis produced low-quality titles ({good_titles}/{len(ideas)}), retrying...")
-                raise ValueError("Low quality titles detected")
-        else:
-            logger.warning(f"[ResearchAgent] Synthesis produced only {len(ideas)} ideas, retrying...")
-            raise ValueError(f"Only {len(ideas)} ideas generated")
-        
-    except Exception as e1:
-        logger.warning(f"[ResearchAgent] Attempt 1 failed: {e1}")
-        
-        try:
-            # Second attempt: With require_json=True for stricter JSON output
-            logger.info("[ResearchAgent] Synthesizer attempt 2: With require_json=True")
-            content = call_groq_api_with_retries(
-                system_prompt, human_prompt, temperature=0.7, max_tokens=6000, require_json=True
-            )
-            logger.info(f"[ResearchAgent] Retry response length: {len(content)} chars")
-            parsed = parse_llm_json(content, context="ra_synthesizer_retry")
-            ideas = parsed.get("ideas", [])
-            trend_summary = parsed.get("trend_summary", "")
-            
-            if not ideas or len(ideas) < 5:
-                raise ValueError(f"Retry produced only {len(ideas)} ideas")
-            
-            logger.info(f"[ResearchAgent] Retry SUCCESS: {len(ideas)} ideas")
-            
-        except Exception as e2:
-            logger.error(f"[ResearchAgent] Attempt 2 also failed: {e2}")
-            # Both attempts failed, trigger fallback
-            raise ValueError(f"Both synthesis attempts failed: {e1}, {e2}")
-
-        # Validate + clean source URLs — keep LLM sources even if not in real_urls
-        # (LLM may paraphrase URLs slightly; strict matching causes empty sources)
-        all_sources = state.get("all_sources", [])
-        real_urls = set()
-        for src in all_sources:
-            if isinstance(src, dict):
-                url = src.get("url")
-                if isinstance(url, str) and url.startswith("http"):
-                    real_urls.add(url)
-                    
+    def _clean_ideas(ideas: list) -> list:
+        """Normalize and validate idea objects."""
+        cleaned = []
         for idea in ideas:
             if not isinstance(idea, dict):
                 continue
-                
-            v_score = idea.get("viral_score", 50)
+            # Normalize viral_score
+            v = idea.get("viral_score", 50)
             try:
-                if isinstance(v_score, str):
-                    v_score = int(''.join(filter(str.isdigit, v_score)) or 50)
-                else:
-                    v_score = int(v_score)
+                v = int(''.join(filter(str.isdigit, str(v))) or 50)
             except Exception:
-                v_score = 50
-                
-            idea["viral_score"] = v_score
-            idea["virality_score"] = v_score  # frontend compat
-            
-            # Keep trend_sources as-is — don't strip them just because URL doesn't match exactly
-            trend_sources = idea.get("trend_sources", [])
-            if not isinstance(trend_sources, list):
-                trend_sources = []
-            
-            idea["trend_sources"] = trend_sources[:5]
-            
-            # Map to frontend schema
-            raw_tags = idea.get("seo_keywords", [])
-            idea["tags"] = raw_tags[:4] if isinstance(raw_tags, list) else []
-            
+                v = 50
+            idea["viral_score"] = v
+            idea["virality_score"] = v
+
+            # Normalize sources
+            raw_sources = idea.get("trend_sources", [])
+            if not isinstance(raw_sources, list):
+                raw_sources = []
             safe_sources = []
-            for s in idea.get("trend_sources", []):
+            for s in raw_sources[:3]:
                 if isinstance(s, dict):
                     safe_sources.append({
-                        "title": str(s.get("title", "") or ""), 
-                        "url": str(s.get("url", "") or ""), 
-                        "platform": str(s.get("platform", "") or "")
+                        "title": str(s.get("title", "") or ""),
+                        "url": str(s.get("url", "") or ""),
+                        "platform": str(s.get("platform", "") or ""),
                     })
-                elif isinstance(s, str) and s.startswith("http"):
-                    safe_sources.append({"title": "Source", "url": s, "platform": "Web"})
+            idea["trend_sources"] = safe_sources
             idea["sources"] = safe_sources
 
-        # Sort by viral score
-        ideas.sort(key=lambda x: x.get("viral_score", 0), reverse=True)
-        # Re-assign ranks after sort
-        for i, idea in enumerate(ideas):
+            # Tags
+            raw_tags = idea.get("seo_keywords", [])
+            idea["tags"] = raw_tags[:4] if isinstance(raw_tags, list) else []
+
+            cleaned.append(idea)
+
+        # Sort by viral score, keep top 5
+        cleaned.sort(key=lambda x: x.get("viral_score", 0), reverse=True)
+        for i, idea in enumerate(cleaned):
             idea["rank"] = i + 1
+        return cleaned[:5]
 
-        logger.info(f"[ResearchAgent] Synthesizer produced {len(ideas)} ideas")
-        return {"raw_ideas": ideas, "trend_summary": trend_summary}
+    # ── Attempt 1: require_json=False (more compatible across models) ─────────
+    ideas, trend_summary = [], ""
+    try:
+        logger.info("[ResearchAgent] Synthesizer attempt 1 (require_json=False)")
+        content = call_groq_api_with_retries(
+            system_prompt, human_prompt, temperature=0.8, max_tokens=4000, require_json=False
+        )
+        logger.info(f"[ResearchAgent] Attempt 1 response: {len(content)} chars | preview: {content[:200]}")
+        parsed = parse_llm_json(content, context="synthesizer_attempt1")
+        ideas = parsed.get("ideas", [])
+        trend_summary = parsed.get("trend_summary", "")
+    except Exception as e1:
+        logger.warning(f"[ResearchAgent] Attempt 1 failed: {e1}")
 
-    except Exception as e:
-        logger.error(f"[ResearchAgent] SYNTHESIZER COMPLETELY FAILED: {e}\n{traceback.format_exc()}")
-        
-        # Return an error idea that shows what went wrong
-        error_idea = {
-            "rank": 1,
-            "viral_score": 0,
-            "title": "ERROR: AI Synthesis Failed",
-            "description": f"The LLM synthesis failed after 2 attempts. Error: {str(e)[:200]}. Check Render logs for details.",
-            "hook": "The AI synthesis encountered an error",
-            "core_angle": "N/A",
-            "why_trending": "Error during synthesis",
-            "trend_sources": [],
-            "seo_keywords": keywords[:4],
-            "best_format": "Standard",
-            "format_reason": "N/A",
-            "risk_level": "High",
-            "tags": keywords[:4],
-            "sources": []
-        }
-        
-        trend_summary = f"SYNTHESIS ERROR: {str(e)[:300]}. Please check your Groq API keys and quotas."
-        return {"raw_ideas": [error_idea], "trend_summary": trend_summary}
+    # ── Attempt 2: require_json=True if attempt 1 gave bad results ───────────
+    if len(ideas) < 3:
+        try:
+            logger.info("[ResearchAgent] Synthesizer attempt 2 (require_json=True)")
+            content = call_groq_api_with_retries(
+                system_prompt, human_prompt, temperature=0.7, max_tokens=4000, require_json=True
+            )
+            logger.info(f"[ResearchAgent] Attempt 2 response: {len(content)} chars | preview: {content[:200]}")
+            parsed = parse_llm_json(content, context="synthesizer_attempt2")
+            ideas = parsed.get("ideas", [])
+            trend_summary = parsed.get("trend_summary", "")
+        except Exception as e2:
+            logger.error(f"[ResearchAgent] Attempt 2 failed: {e2}")
+
+    # ── Validate quality ──────────────────────────────────────────────────────
+    if ideas:
+        good = [i for i in ideas if i.get("title") and not i["title"].startswith("[")
+                and "search volume" not in i["title"].lower() and len(i.get("title","")) > 20]
+        if len(good) < len(ideas) // 2:
+            logger.warning(f"[ResearchAgent] Low quality titles detected ({len(good)}/{len(ideas)})")
+        ideas = good if good else ideas
+
+    if not ideas:
+        logger.error("[ResearchAgent] SYNTHESIZER FAILED — no ideas generated")
+        raise ValueError("Synthesizer produced no ideas after 2 attempts. Check API keys and quotas.")
+
+    final = _clean_ideas(ideas)
+    logger.info(f"[ResearchAgent] Synthesizer SUCCESS — {len(final)} ideas")
+    return {"raw_ideas": final, "trend_summary": trend_summary}
 
 
 # ── Final Formatter Node ──────────────────────────────────────────────────────
@@ -2250,7 +2187,7 @@ def ra_formatter(state: NicheResearchState) -> dict:
 
     # Second-pass enrichment: ensure all required fields exist
     final = []
-    for i, idea in enumerate(ideas[:10]):
+    for i, idea in enumerate(ideas[:5]):  # Top 5 only
         final.append({
             "rank":          idea.get("rank", i + 1),
             "viral_score":   idea.get("viral_score", 50),
