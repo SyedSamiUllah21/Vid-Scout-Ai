@@ -229,7 +229,7 @@ const ThumbnailAnalyzer = () => {
           <div className="results-container" style={{ width: '100%' }}>
             
             {/* Top Hero Section */}
-            <div className="glass-card" style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 2fr 1fr', gap: '40px', padding: '32px', alignItems: 'center' }}>
+            <div className="glass-card" style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 2fr 1fr', gap: '40px', padding: '32px', alignItems: 'center', background: '#000000' }}>
               
               {/* Left: Thumbnail Image */}
               <div style={{ height: '100%', display: 'flex', alignItems: 'center' }}>
@@ -334,7 +334,7 @@ const ThumbnailAnalyzer = () => {
                 ];
                 const theme = themeColors[idx % themeColors.length];
                 return (
-                <div key={idx} className="glass-card" style={{ display: 'flex', flexDirection: 'column', padding: '24px', justifyContent: 'space-between', borderLeft: `3px solid ${theme.hex}`, boxShadow: `-4px 0 15px -4px rgba(${theme.rgb}, 0.2)` }}>
+                <div key={idx} className="glass-card" style={{ display: 'flex', flexDirection: 'column', padding: '24px', justifyContent: 'space-between', borderLeft: `3px solid ${theme.hex}`, boxShadow: `-4px 0 15px -4px rgba(${theme.rgb}, 0.2)`, background: '#000000' }}>
                   <div style={{ display: 'flex', gap: '20px' }}>
                     {/* Icon */}
                     <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: `rgba(${theme.rgb}, 0.05)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
