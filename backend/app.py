@@ -150,12 +150,9 @@ def parse_llm_json(content: str, context: str = "LLM response"):
 
 app = Flask(__name__)
 
-# ── Production CORS — restrict to your frontend domain ──────────────────────
-# In production, set the FRONTEND_ORIGIN env var to your deployed frontend URL.
-# Locally it defaults to the Vite dev server.
-_allowed_origins = _get_env("FRONTEND_ORIGIN") or "http://localhost:5173"
-CORS(app, resources={r"/api/*": {"origins": _allowed_origins.split(",")},
-                     r"/analyze": {"origins": _allowed_origins.split(",")}})
+# ── CORS — allow all origins (frontend is on a separate domain) ──────────────
+CORS(app, resources={r"/api/*": {"origins": "*"},
+                     r"/analyze": {"origins": "*"}})
 
 # ── Rate Limiting — protect API keys from abuse ─────────────────────────────
 limiter = Limiter(
@@ -3027,7 +3024,7 @@ def explore_keyword():
     except Exception as exc:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Failed to explore keyword. Please try again."}), 500
 
 @app.route("/api/niche-validate", methods=["POST"])
 @limiter.limit("10 per minute")
@@ -3050,7 +3047,7 @@ def validate_niche():
     except Exception as exc:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Failed to validate niche. Please try again."}), 500
 
 @app.route("/api/script-write", methods=["POST"])
 @limiter.limit("5 per minute")
@@ -3078,7 +3075,7 @@ def write_script():
     except Exception as exc:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Failed to write script. Please try again."}), 500
 
 
 @app.route("/api/tags-generate", methods=["POST"])
@@ -3103,10 +3100,21 @@ def generate_tags():
     human_prompt = f"Video Title: {title}\nGenerate exactly 25 highly optimized tags."
 
     try:
-        content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.7, max_tokens=300)
+        content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.7, max_tokens=800)
         
+        if not content or not content.strip():
+            return jsonify({"error": "AI returned an empty response. Please try again."}), 500
+
         # Try to parse standard list
-        result = parse_llm_json(content, context="tags_generate")
+        try:
+            result = parse_llm_json(content, context="tags_generate")
+        except Exception:
+            # Fallback: extract quoted strings manually from the raw response
+            import re as _re
+            raw_tags = _re.findall(r'"([^"]{2,60})"', content)
+            if raw_tags:
+                return jsonify({"tags": raw_tags[:25]})
+            return jsonify({"error": "Could not parse tags from AI response. Please try again."}), 500
         
         # If it parsed as a dict with a 'tags' key, extract it
         if isinstance(result, dict) and 'tags' in result:
@@ -3114,13 +3122,18 @@ def generate_tags():
         elif isinstance(result, list):
             tags = result
         else:
-            tags = []
+            # Last resort: extract quoted strings
+            import re as _re
+            tags = _re.findall(r'"([^"]{2,60})"', content)[:25]
             
+        if not tags:
+            return jsonify({"error": "No tags were generated. Please try a different title."}), 500
+
         return jsonify({"tags": tags})
     except Exception as exc:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Failed to generate tags. Please try again."}), 500
 
 
 @app.route("/api/thumbnail-analyze", methods=["POST"])
@@ -3206,11 +3219,8 @@ def analyze_thumbnail():
 
 
 @app.route("/api/description-generate", methods=["POST"])
+@limiter.limit("10 per minute")
 def generate_description():
-    groq_key = get_groq_api_key()
-    if not groq_key:
-        return jsonify({"error": "Groq API Key is missing. Add GROQ_API_KEY to your .env file."}), 400
-
     data = request.get_json(force=True)
     title  = data.get("title", "").strip()
     script = data.get("script", "").strip()
@@ -3250,18 +3260,26 @@ def generate_description():
     )
 
     try:
-        print(f"[Description] Generating for: {title}", flush=True)
-        content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.7, max_tokens=600)
-        result  = parse_llm_json(content, context="description_generate")
+        content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.7, max_tokens=800)
 
-        # Validate and normalise
+        if not content or not content.strip():
+            return jsonify({"error": "AI returned an empty response. Please try again."}), 500
+
+        try:
+            result = parse_llm_json(content, context="description_generate")
+        except Exception:
+            return jsonify({"error": "Could not parse AI response. Please try again."}), 500
+
         if isinstance(result, dict):
-            title_out  = result.get("title", title)
-            desc_out   = result.get("description", "")
-            tags_out   = result.get("hashtags", [])
+            title_out = result.get("title", title)
+            desc_out  = result.get("description", "")
+            tags_out  = result.get("hashtags", [])
 
             # Ensure hashtags start with #
             tags_out = [t if t.startswith("#") else f"#{t}" for t in tags_out if t]
+
+            if not desc_out:
+                return jsonify({"error": "AI did not return a description. Please try again."}), 500
 
             return jsonify({
                 "title":       title_out,
@@ -3269,12 +3287,12 @@ def generate_description():
                 "hashtags":    tags_out[:4],
             })
         else:
-            raise ValueError("Unexpected response format from LLM.")
+            return jsonify({"error": "Unexpected response format. Please try again."}), 500
 
     except Exception as exc:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Failed to generate description. Please try again."}), 500
 
 
 @app.route("/api/community-generate", methods=["POST"])
@@ -3311,10 +3329,16 @@ def generate_community_posts():
     human_prompt = f"Topic/Niche: {topic}\nGenerate the 3 community posts."
 
     try:
-        content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.7, max_tokens=600)
-        
-        result = parse_llm_json(content, context="community_generate")
-        
+        content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.7, max_tokens=900)
+
+        if not content or not content.strip():
+            return jsonify({"error": "AI returned an empty response. Please try again."}), 500
+
+        try:
+            result = parse_llm_json(content, context="community_generate")
+        except Exception:
+            return jsonify({"error": "Could not parse AI response. Please try again."}), 500
+
         if isinstance(result, list):
             posts = result
         elif isinstance(result, dict) and 'posts' in result:
@@ -3322,11 +3346,14 @@ def generate_community_posts():
         else:
             posts = []
 
+        if not posts:
+            return jsonify({"error": "No posts were generated. Please try again."}), 500
+
         return jsonify({"posts": posts})
     except Exception as exc:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Failed to generate community posts. Please try again."}), 500
 
 
 if __name__ == "__main__":

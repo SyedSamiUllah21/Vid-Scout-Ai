@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { requestJson } from '../lib/api';
 
 const tagColors = [
   '#ec4899', // Pink
@@ -31,22 +32,15 @@ const TagsGenerator = () => {
     setCopied(false);
 
     try {
-      const response = await fetch('/api/tags-generate', {
+      const data = await requestJson('/api/tags-generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title })
       });
-
-      const data = await response.json();
       
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate tags');
-      }
-
       if (data.tags && Array.isArray(data.tags)) {
         setTags(data.tags);
       } else {
-        throw new Error("Invalid response format from server.");
+        throw new Error(data.error || "Invalid response format from server.");
       }
     } catch (err) {
       setError(err.message);

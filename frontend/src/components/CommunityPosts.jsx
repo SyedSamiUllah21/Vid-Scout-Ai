@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { requestJson } from '../lib/api';
 
 const CommunityPosts = () => {
   const [topic, setTopic] = useState('');
@@ -22,22 +23,15 @@ const CommunityPosts = () => {
     setCopiedIndex(null);
 
     try {
-      const response = await fetch('/api/community-generate', {
+      const data = await requestJson('/api/community-generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic, poll_type: pollType })
       });
-
-      const data = await response.json();
       
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate posts');
-      }
-
       if (data.posts && Array.isArray(data.posts)) {
         setPosts(data.posts);
       } else {
-        throw new Error("Invalid response format from server.");
+        throw new Error(data.error || "Invalid response format from server.");
       }
     } catch (err) {
       setError(err.message);
