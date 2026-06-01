@@ -2582,27 +2582,153 @@ def channel_insights():
                 "color": colors[i]
             })
             
-        # Use Groq to categorize
+        # Build content distribution using multi-word phrase extraction
         content_distribution = []
-        groq_key = get_groq_api_key()
-        if videos and groq_key:
-            titles_text = "\n".join([f"- {v['title']}" for v in videos])
-            system_prompt = (
-                "You are a YouTube analytics expert. Analyze these recent video titles and categorize them into EXACTLY 5 distinct thematic categories that accurately reflect the channel's niche. "
-                "Return ONLY a JSON array of objects with this schema: [{\"name\": \"Category Name\", \"value\": 40}] where 'value' is the percentage (all values must sum to 100). Do not use markdown."
-            )
-            try:
-                content_llm = call_groq_api_with_retries(system_prompt, f"Titles:\n{titles_text}", temperature=0.3, max_tokens=500, require_json=True)
-                dist = parse_llm_json(content_llm, context="content_distribution")
-                if isinstance(dist, list):
-                    for i, item in enumerate(dist):
-                        item["color"] = colors[i % len(colors)]
-                    content_distribution = dist
-            except Exception as e:
-                logger.error("Error categorizing:", e)
+        if videos:
+            import re as _re
+            from collections import Counter, defaultdict
+            
+            # Expanded stop words list
+            stop_words = {
+                'the','a','an','and','or','but','in','on','at','to','for','of','with',
+                'is','are','was','were','be','been','being','have','has','had','do',
+                'does','did','will','would','could','should','may','might','i','my',
+                'you','your','we','our','they','their','it','its','this','that','these',
+                'those','how','why','what','when','where','who','which','if','so','as',
+                'by','from','up','about','into','through','during','before','after',
+                'above','below','between','out','off','over','under','again','then',
+                'once','here','there','all','both','each','few','more','most','other',
+                'some','such','no','not','only','same','than','too','very','just',
+                'can','now','new','get','got','make','made','one','two','three','vs',
+                'part','full','ep','episode','ft','feat','official','video','youtube',
+                '2024','2025','2026','|','–','—','using','every','best','top','things',
+                'need','know','watch','see','look','like','really','way','much','many',
+                'guide','tutorial','tips','tricks','learn','show','tell','find','help',
+            }
+            
+            # Extract bigrams and trigrams (multi-word phrases) from all titles
+            all_bigrams = []
+            all_trigrams = []
+            all_words = []
+            
+            for v in videos:
+                title_lower = v['title'].lower()
+                words = _re.findall(r"[a-zA-Z]{3,}", title_lower)
+                words = [w for w in words if w not in stop_words]
                 
+                # Store single words
+                all_words.extend(words)
+                
+                # Create bigrams (2-word phrases)
+                for i in range(len(words) - 1):
+                    bigram = f"{words[i]} {words[i+1]}"
+                    all_bigrams.append(bigram)
+                
+                # Create trigrams (3-word phrases)
+                for i in range(len(words) - 2):
+                    trigram = f"{words[i]} {words[i+1]} {words[i+2]}"
+                    all_trigrams.append(trigram)
+            
+            # Count phrase frequencies
+            trigram_counts = Counter(all_trigrams)
+            bigram_counts = Counter(all_bigrams)
+            word_counts = Counter(all_words)
+            
+            # Prioritize multi-word phrases that appear multiple times
+            candidate_phrases = []
+            
+            # Add trigrams that appear at least 2 times
+            for phrase, count in trigram_counts.most_common(20):
+                if count >= 2:
+                    candidate_phrases.append((phrase, count, 3))  # weight=3 for trigrams
+            
+            # Add bigrams that appear at least 3 times
+            for phrase, count in bigram_counts.most_common(20):
+                if count >= 3:
+                    candidate_phrases.append((phrase, count, 2))  # weight=2 for bigrams
+            
+            # Add single words that appear at least 5 times (as fallback)
+            for word, count in word_counts.most_common(15):
+                if count >= 5:
+                    candidate_phrases.append((word, count, 1))  # weight=1 for single words
+            
+            # Sort by (count * weight) to prioritize meaningful multi-word phrases
+            candidate_phrases.sort(key=lambda x: x[1] * x[2], reverse=True)
+            
+            # Take top candidates
+            top_phrases = [p[0] for p in candidate_phrases[:20]]
+            
+            if len(top_phrases) >= 3:
+                # Assign each video to a category based on phrase matching
+                video_categories = defaultdict(list)
+                
+                for v in videos:
+                    title_lower = v['title'].lower()
+                    matched = False
+                    
+                    # Try to match with phrases (prioritize longer phrases)
+                    for phrase in top_phrases:
+                        phrase_words = phrase.split()
+                        # Check if all words in phrase appear in title
+                        if all(word in title_lower for word in phrase_words):
+                            video_categories[phrase].append(v)
+                            matched = True
+                            break
+                
+                # Sort categories by video count
+                sorted_cats = sorted(video_categories.items(), key=lambda x: len(x[1]), reverse=True)
+                
+                # Take top 5 categories
+                top_5_cats = sorted_cats[:5]
+                
+                # Calculate real percentages
+                total_videos = len(videos)
+                distribution = []
+                
+                for phrase, vid_list in top_5_cats:
+                    count = len(vid_list)
+                    percentage = round((count / total_videos) * 100)
+                    
+                    # Create proper category name (title case)
+                    words = phrase.split()
+                    category_name = " ".join([w.capitalize() for w in words])
+                    
+                    distribution.append({
+                        "name": category_name,
+                        "value": percentage,
+                        "count": count
+                    })
+                
+                # Normalize to exactly 100%
+                if distribution:
+                    total_pct = sum(d['value'] for d in distribution)
+                    if total_pct != 100:
+                        diff = 100 - total_pct
+                        distribution[0]['value'] += diff
+                    
+                    # Assign colors
+                    for i, item in enumerate(distribution):
+                        item["color"] = colors[i % len(colors)]
+                    
+                    content_distribution = distribution
+            
+            # Fallback: use top single words
+            if not content_distribution:
+                top_5_words = [w for w, c in word_counts.most_common(5) if c >= 2]
+                if top_5_words:
+                    per = 100 // len(top_5_words)
+                    remainder = 100 - per * len(top_5_words)
+                    content_distribution = [
+                        {
+                            "name": f"{w.capitalize()} Related",
+                            "value": per + (remainder if i == 0 else 0),
+                            "color": colors[i % len(colors)]
+                        }
+                        for i, w in enumerate(top_5_words)
+                    ]
+        
         if not content_distribution:
-             content_distribution = [{"name": "Mixed Content", "value": 100, "color": "#00d2ff"}]
+            content_distribution = [{"name": "Content Analysis Unavailable", "value": 100, "color": "#00d2ff"}]
 
         # Fetch Most Viral Video
         viral_video = None
