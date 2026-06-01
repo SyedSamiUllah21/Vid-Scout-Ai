@@ -199,7 +199,24 @@ const TrendingIdeas = () => {
 
           {/* Ideas list */}
           <div className="ideas-list-container" style={{ width: '100%' }}>
-            {(results.ideas || []).map((idea, index) => {
+            {(results.ideas || []).length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '48px 24px',
+                background: 'rgba(168,85,247,0.05)',
+                border: '1px solid rgba(168,85,247,0.15)',
+                borderRadius: '12px',
+                color: 'rgba(255,255,255,0.6)',
+              }}>
+                <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: '2rem', color: '#eab308', marginBottom: '16px', display: 'block' }}></i>
+                <p style={{ fontSize: '1rem', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>No ideas generated this run</p>
+                <p style={{ fontSize: '0.85rem', lineHeight: '1.6' }}>
+                  The research agent completed but the AI synthesis step returned no ideas.<br />
+                  This usually happens due to Groq API rate limits or a temporary overload.<br />
+                  <strong style={{ color: '#a855f7' }}>Please click "← Back to Generator" and try again.</strong>
+                </p>
+              </div>
+            ) : (results.ideas || []).map((idea, index) => {
               const score = idea.viral_score || idea.virality_score || 50;
               const scoreColor = score >= 85 ? '#22c55e' : score >= 70 ? '#eab308' : '#ef4444';
               const rankColors = ['#ff3b3b','#ff9900','#ffe600','#00e676','#00b0ff','#7c4dff','#e040fb','#00e5ff','#ff4081','#1de9b6'];
