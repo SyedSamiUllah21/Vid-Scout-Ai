@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: Vid-Scout-Ai
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    autoDeploy: true
