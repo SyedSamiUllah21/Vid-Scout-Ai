@@ -242,33 +242,33 @@ const TrendingIdeas = () => {
                     </div>
 
                     {/* Description */}
-                    <p style={{ lineHeight: '1.55', fontSize: '0.87rem', color: 'rgba(255,255,255,0.68)', marginBottom: '10px' }}>{idea.description}</p>
+                    <p style={{ lineHeight: '1.65', fontSize: '1rem', color: 'rgba(255,255,255,0.88)', marginBottom: '14px' }}>{idea.description}</p>
 
                     {/* Hook */}
                     {idea.hook && (
-                      <div style={{ background: 'rgba(251,146,60,0.06)', border: '1px solid rgba(251,146,60,0.15)', borderRadius: '8px', padding: '9px 14px', marginBottom: '9px' }}>
-                        <p style={{ fontSize: '0.62rem', fontWeight: 700, color: '#fb923c', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '3px' }}>
+                      <div style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.25)', borderRadius: '10px', padding: '12px 16px', marginBottom: '10px' }}>
+                        <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fb923c', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>
                           <i className="fa-solid fa-bolt" style={{ marginRight: '4px' }}></i>Hook — First 15 Seconds
                         </p>
-                        <p style={{ fontSize: '0.84rem', color: 'rgba(255,255,255,0.82)', lineHeight: '1.5', fontStyle: 'italic' }}>"{idea.hook}"</p>
+                        <p style={{ fontSize: '0.97rem', color: 'rgba(255,255,255,0.92)', lineHeight: '1.6', fontStyle: 'italic' }}>"{idea.hook}"</p>
                       </div>
                     )}
 
                     {/* Core angle */}
                     {idea.core_angle && (
-                      <div style={{ background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.12)', borderRadius: '8px', padding: '7px 14px', marginBottom: '9px' }}>
-                        <p style={{ fontSize: '0.62rem', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '3px' }}>Core Angle</p>
-                        <p style={{ fontSize: '0.83rem', color: 'rgba(255,255,255,0.7)', lineHeight: '1.5' }}>{idea.core_angle}</p>
+                      <div style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '10px', padding: '10px 16px', marginBottom: '10px' }}>
+                        <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>Core Angle</p>
+                        <p style={{ fontSize: '0.95rem', color: 'rgba(255,255,255,0.88)', lineHeight: '1.6' }}>{idea.core_angle}</p>
                       </div>
                     )}
 
                     {/* Why trending */}
                     {idea.why_trending && (
-                      <div style={{ background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.12)', borderRadius: '8px', padding: '7px 14px', marginBottom: '9px' }}>
-                        <p style={{ fontSize: '0.62rem', fontWeight: 700, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '3px' }}>
+                      <div style={{ background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: '10px', padding: '10px 16px', marginBottom: '10px' }}>
+                        <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>
                           <i className="fa-solid fa-fire" style={{ marginRight: '4px' }}></i>Why Trending Now
                         </p>
-                        <p style={{ fontSize: '0.83rem', color: 'rgba(255,255,255,0.7)', lineHeight: '1.5' }}>{idea.why_trending}</p>
+                        <p style={{ fontSize: '0.95rem', color: 'rgba(255,255,255,0.88)', lineHeight: '1.6' }}>{idea.why_trending}</p>
                       </div>
                     )}
 
