@@ -70,7 +70,8 @@
    Intentionally set to 14px for correct visual density.
    ================================================================ */
 html {
-  font-size: 14px; /* LOCKED — do not change */
+  font-size: 14px;
+  /* LOCKED — do not change */
 }
 
 html,
@@ -122,7 +123,8 @@ body::after {
    240px is the correct sidebar width. 300px caused the
    zoomed-in look on normal screens. */
 .sidebar {
-  width: 240px; /* LOCKED */
+  width: 240px;
+  /* LOCKED */
   background: rgba(11, 3, 22, 0.75);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -171,11 +173,13 @@ body::after {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px; /* LOCKED */
+  padding: 12px 16px;
+  /* LOCKED */
   border-radius: 10px;
   color: #ffffff;
   font-weight: 600;
-  font-size: 0.9rem; /* LOCKED */
+  font-size: 0.9rem;
+  /* LOCKED */
   cursor: pointer;
   transition: all var(--transition);
   border: 1px solid transparent;
@@ -517,7 +521,7 @@ button#analyzeThumbBtn:disabled {
 }
 
 .glass-card {
-  background: #000000 !important;
+  background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: 16px;
   backdrop-filter: blur(var(--glass-blur));
@@ -527,7 +531,7 @@ button#analyzeThumbBtn:disabled {
 }
 
 .glass-card:hover {
-  background: #0a0a0a !important;
+  background: var(--glass-bg-hover);
   border-color: var(--glass-border-hover);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
@@ -1416,7 +1420,7 @@ select#trendTimeframe option:checked {
 }
 
 .analyzer-card-new {
-  background: #000000 !important;
+  background: var(--card-bg);
   border: 1px solid var(--glass-border);
   border-radius: 20px;
   padding: 35px 35px 25px;
@@ -2575,6 +2579,7 @@ select#trendTimeframe option:checked {
   cursor: pointer;
   transition: background 0.3s;
 }
+
 .adv-dropdown:hover {
   background: rgba(255, 42, 42, 0.1);
 }
@@ -2604,7 +2609,7 @@ select#trendTimeframe option:checked {
   justify-content: center;
   font-size: 1.8rem;
   color: #fff;
-  box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
 }
 
 .adv-stat-info {
@@ -2631,9 +2636,21 @@ select#trendTimeframe option:checked {
   font-size: 0.85rem;
   font-weight: 700;
 }
-.adv-stat-trend.up { color: #4ade80; }
-.adv-stat-trend.neutral { color: var(--text-muted); }
-.adv-stat-trend-sub { color: var(--text-muted); font-weight: 500; font-size: 0.8rem; margin-left: 5px; }
+
+.adv-stat-trend.up {
+  color: #4ade80;
+}
+
+.adv-stat-trend.neutral {
+  color: var(--text-muted);
+}
+
+.adv-stat-trend-sub {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.8rem;
+  margin-left: 5px;
+}
 
 .adv-gauges-grid {
   display: grid;
@@ -2674,8 +2691,8 @@ select#trendTimeframe option:checked {
 }
 
 .adv-btn-details {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 0.8rem;
@@ -2683,8 +2700,9 @@ select#trendTimeframe option:checked {
   cursor: pointer;
   transition: all 0.2s;
 }
+
 .adv-btn-details:hover {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* ── Responsive Overrides ────────────────────────────────── */
@@ -2705,10 +2723,12 @@ select#trendTimeframe option:checked {
   justify-content: space-between;
   gap: 40px;
 }
+
 .tool-card-grid-item {
   width: 65%;
   flex-shrink: 0;
 }
+
 .marketing-copy {
   display: flex;
   flex-direction: column;
@@ -2727,27 +2747,34 @@ select#trendTimeframe option:checked {
     margin-bottom: -20px;
     width: 100%;
   }
+
   .tool-card-row {
     flex-direction: column !important;
     gap: 30px !important;
   }
+
   .tool-card-grid-item {
     width: 100% !important;
   }
+
   .marketing-copy {
     text-align: center !important;
     padding: 0 !important;
   }
+
   .home-hero-full {
     padding: 60px 20px !important;
     min-height: auto;
   }
+
   .home-hero-full .hero-title {
     font-size: clamp(2rem, 8vw, 3.5rem) !important;
   }
+
   .home-hero-full .hero-subtitle {
     font-size: clamp(0.9rem, 4vw, 1.1rem) !important;
   }
+
   .hero-mockup {
     display: none !important;
   }
@@ -2761,34 +2788,34 @@ select#trendTimeframe option:checked {
     gap: 16px !important;
     text-align: center !important;
   }
-  
+
   .card-icon {
     margin: 0 auto !important;
     width: 60px !important;
     height: 60px !important;
     font-size: 1.5rem !important;
   }
-  
+
   .card-details {
     text-align: center !important;
     align-items: center !important;
   }
-  
+
   .card-arrow-action {
     display: none !important;
   }
-  
+
   .card-launch-btn-small {
     margin: 10px auto 0 !important;
     align-self: center !important;
   }
-  
+
   .card-tags-row {
     justify-content: center !important;
     flex-wrap: wrap !important;
     margin-top: 16px !important;
   }
-  
+
   .home-logo {
     position: relative !important;
     top: auto !important;
@@ -2798,7 +2825,7 @@ select#trendTimeframe option:checked {
     margin-bottom: 0px !important;
     width: 100% !important;
   }
-  
+
   .home-hero-full {
     padding: 20px 20px 60px !important;
     min-height: auto !important;
@@ -2811,13 +2838,16 @@ select#trendTimeframe option:checked {
     padding: 0 15px 60px !important;
     margin-top: 50px !important;
   }
+
   .section-header {
     margin-bottom: 30px !important;
   }
+
   .hero-subtitle {
     padding: 0 15px !important;
     margin-bottom: 40px !important;
   }
+
   .home-hero-full {
     padding-bottom: 80px !important;
   }
@@ -2830,13 +2860,16 @@ select#trendTimeframe option:checked {
     height: auto !important;
     min-height: auto !important;
   }
+
   .hero-content {
     width: 100% !important;
     padding: 0 10px !important;
   }
+
   .home-hero-full .hero-title {
     margin-bottom: 24px !important;
   }
+
   .hero-subtitle {
     display: block !important;
     width: 100% !important;
@@ -2848,12 +2881,14 @@ select#trendTimeframe option:checked {
     font-size: 1.1rem !important;
     word-wrap: break-word !important;
   }
+
   .tools-section {
     margin-top: 60px !important;
     padding-top: 20px !important;
     position: relative;
     z-index: 20;
   }
+
   .section-header {
     margin-bottom: 40px !important;
   }
@@ -2930,7 +2965,7 @@ select#trendTimeframe option:checked {
   .app-container {
     flex-direction: column;
   }
-  
+
   .mobile-header {
     display: flex;
   }
@@ -2977,19 +3012,25 @@ select#trendTimeframe option:checked {
   }
 
   @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
   }
 }
 
 /* Global Tool View Mobile Fixes */
 @media (max-width: 900px) {
+
   /* Fix the squished input features grid (Readability, Contrast, Emotion) */
   .features-grid {
     grid-template-columns: 1fr !important;
     gap: 16px !important;
   }
-  
+
   /* Force all inline grids inside the app to stack vertically on mobile */
   .tool-view div[style*="grid-template-columns"],
   .results-container div[style*="grid-template-columns"] {
@@ -3001,9 +3042,9 @@ select#trendTimeframe option:checked {
   .header-card {
     text-align: center !important;
   }
-  
+
   /* Center the thumbnail/image inside the header card */
-  .header-card > div:last-child {
+  .header-card>div:last-child {
     display: flex !important;
     justify-content: center !important;
     margin-top: 16px !important;
@@ -3017,13 +3058,13 @@ select#trendTimeframe option:checked {
     margin: 0 10px !important;
     width: auto !important;
   }
-  
+
   /* Ensure results containers don't stretch off screen */
   .results-container {
     padding: 0 10px !important;
     width: auto !important;
   }
-  
+
   /* Fix any remaining inline flex rows that are too wide */
   .tool-view div[style*="display: flex"][style*="justify-content: space-between"] {
     flex-wrap: wrap !important;
@@ -3038,9 +3079,11 @@ select#trendTimeframe option:checked {
     overflow-x: hidden !important;
     padding-bottom: 200px !important;
   }
+
   .hero-content {
     overflow: visible !important;
   }
+
   .hero-subtitle {
     padding-bottom: 20px !important;
     margin-bottom: 80px !important;
@@ -3050,13 +3093,15 @@ select#trendTimeframe option:checked {
 /* Critical Fix: Prevent Hero Title from getting pushed off-screen */
 @media (max-width: 900px) {
   .home-hero-full {
-    display: block !important; /* Overrides flex which was pushing content UP */
+    display: block !important;
+    /* Overrides flex which was pushing content UP */
     padding-top: 60px !important;
     padding-bottom: 60px !important;
     min-height: auto !important;
     height: auto !important;
     overflow: visible !important;
   }
+
   .hero-content {
     display: block !important;
     padding: 0 15px !important;
@@ -3074,7 +3119,7 @@ select#trendTimeframe option:checked {
   position: relative;
   transition: all 0.3s ease;
   margin-bottom: 16px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
 .idea-list-card::before {
@@ -3107,7 +3152,8 @@ select#trendTimeframe option:checked {
 .idea-rank-section .rank-num {
   font-size: 1.8rem;
   font-weight: 800;
-  color: #a855f7; /* matching the aesthetic */
+  color: #a855f7;
+  /* matching the aesthetic */
   margin-bottom: 6px;
 }
 
@@ -3121,6 +3167,7 @@ select#trendTimeframe option:checked {
   align-items: center;
   gap: 4px;
 }
+
 .idea-rank-section .trending-label i {
   color: #a855f7;
 }
@@ -3175,7 +3222,7 @@ select#trendTimeframe option:checked {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  background: rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.03);
   padding: 8px 12px;
   border-radius: 6px;
   width: fit-content;
@@ -3188,11 +3235,12 @@ select#trendTimeframe option:checked {
 
 .idea-tags span {
   font-size: 0.75rem;
-  color: rgba(255,255,255,0.7);
+  color: rgba(255, 255, 255, 0.7);
   font-weight: 500;
 }
+
 .idea-tags span.dot {
-  color: rgba(255,255,255,0.3);
+  color: rgba(255, 255, 255, 0.3);
 }
 
 .idea-score-section {

@@ -172,7 +172,7 @@ const AIScriptWriter = () => {
           <div className="results-container" style={{ width: '100%' }}>
 
             {/* Header card */}
-            <div className="header-card glass-card" style={{ padding: '24px 32px' }}>
+            <div className="header-card glass-card" style={{ padding: '24px 32px', background: '#000000' }}>
               <p style={{ color: '#14b8a6', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: '4px', textShadow: '0 0 10px rgba(20, 184, 166, 0.5)' }}>Video Plan Draft</p>
               <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#fff' }}>
                 "{results.title || title}"
@@ -183,7 +183,7 @@ const AIScriptWriter = () => {
             </div>
 
             {/* Strategic Overview Grid */}
-            <div className="glass-card" style={{ marginTop: '24px', padding: '24px' }}>
+            <div className="glass-card" style={{ marginTop: '24px', padding: '24px', background: '#000000' }}>
               <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Production Overview</span>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '20px', marginTop: '16px' }}>
                 <div style={{ padding: '12px', borderLeft: '3px solid #3b82f6', background: 'rgba(255,255,255,0.01)', boxShadow: '-4px 0 15px -4px rgba(59, 130, 246, 0.4)' }}>
@@ -226,7 +226,7 @@ const AIScriptWriter = () => {
                   ];
                   const c = colors[idx % colors.length];
                   return (
-                    <div key={idx} className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '24px', position: 'relative' }}>
+                    <div key={idx} className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '24px', position: 'relative', background: '#000000' }}>
                       <div>
                         <span style={{ fontSize: '0.7rem', fontWeight: 700, color: c.hex, textTransform: 'uppercase', letterSpacing: '1px', textShadow: `0 0 10px rgba(${c.rgb}, 0.5)` }}>Hook Option {idx + 1}</span>
                         <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.85)', lineHeight: '1.6', marginTop: '12px', fontStyle: 'italic' }}>
@@ -262,7 +262,7 @@ const AIScriptWriter = () => {
                       border: '1px solid rgba(255,255,255,0.08)',
                       borderRadius: '12px',
                       padding: '24px 30px',
-                      background: 'rgba(255,255,255,0.03)'
+                      background: '#000000'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -306,7 +306,7 @@ const AIScriptWriter = () => {
             </div>
 
             {/* Strategic Notes */}
-            <div className="glass-card" style={{ marginTop: '24px', marginBottom: '40px', padding: '32px', borderColor: 'rgba(20,184,166,0.25)', background: 'linear-gradient(135deg, rgba(20,184,166,0.03) 0%, rgba(22,27,34,0.4) 100%)', boxShadow: '0 0 20px rgba(20, 184, 166, 0.15)' }}>
+            <div className="glass-card" style={{ marginTop: '24px', marginBottom: '40px', padding: '32px', borderColor: 'rgba(20,184,166,0.25)', background: '#000000', boxShadow: '0 0 20px rgba(20, 184, 166, 0.15)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                 <i className="fa-solid fa-clipboard-question" style={{ color: '#14b8a6', filter: 'drop-shadow(0 0 8px rgba(20, 184, 166, 0.8))' }}></i>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff' }}>Strategic Creator Advice</h3>

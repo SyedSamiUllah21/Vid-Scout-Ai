@@ -249,7 +249,7 @@ const CommunityPosts = () => {
 
                 return (
                   <div key={idx} style={{ 
-                    background: 'rgba(22, 27, 34, 0.6)', 
+                    background: '#000000', 
                     border: `1px solid rgba(255,255,255,0.05)`, 
                     borderRadius: '16px', 
                     padding: '24px', 
@@ -295,7 +295,7 @@ const CommunityPosts = () => {
 
                     {/* Inner Dark Card */}
                     <div style={{ 
-                      background: '#0d1117', 
+                      background: '#050505', 
                       borderRadius: '12px', 
                       padding: '20px', 
                       flex: 1, 
@@ -402,7 +402,7 @@ const CommunityPosts = () => {
 
             {/* Pro Tip Footer */}
             <div style={{ 
-              background: 'rgba(22, 27, 34, 0.4)', 
+              background: '#000000', 
               border: '1px solid rgba(255,255,255,0.05)', 
               borderRadius: '12px', 
               padding: '16px 24px', 
