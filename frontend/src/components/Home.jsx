@@ -257,7 +257,7 @@ const Home = ({ setActiveView }) => {
             }}
           >
             The Ultimate YouTube<br />
-            <span className="hero-gradient-text">Creator Arsenal</span>
+            <span>Creator Arsenal</span>
           </motion.h1>
 
           <motion.p
