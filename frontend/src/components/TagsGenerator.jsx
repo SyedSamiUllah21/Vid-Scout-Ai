@@ -147,7 +147,7 @@ const TagsGenerator = () => {
         <div className="dashboard">
           <button className="dash-back-btn" onClick={() => setTags([])}>← Back to Generator</button>
           
-          <div className="results-container" style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
+          <div className="results-container" style={{ width: '100%' }}>
             <div className="glass-card" style={{ padding: '32px', animation: 'fadeIn 0.5s ease', borderLeft: `3px solid #a855f7`, boxShadow: `-4px 0 15px -4px rgba(168, 85, 247, 0.2)`, background: '#000000' }}>
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
