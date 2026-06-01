@@ -181,8 +181,8 @@ const DescriptionGenerator = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {result.description.split('\n').filter(l => l.trim()).map((line, i) => (
                     <p key={i} style={{
-                      fontSize: '0.88rem',
-                      color: 'rgba(255,255,255,0.78)',
+                      fontSize: '0.95rem',
+                      color: '#ffffff',
                       margin: 0,
                       lineHeight: '1.75',
                       wordBreak: 'break-word',
@@ -251,7 +251,7 @@ const DescriptionGenerator = () => {
               display: 'flex', alignItems: 'center', gap: '12px',
             }}>
               <i className="fa-solid fa-star" style={{ color: '#f97316', fontSize: '1rem', flexShrink: 0 }}></i>
-              <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.5' }}>
+              <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', margin: 0, lineHeight: '1.5' }}>
                 <strong style={{ color: '#f97316' }}>Pro Tip:</strong> A strong title, description, and hashtags can significantly increase your video's discoverability.
               </p>
             </div>
