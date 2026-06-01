@@ -2032,14 +2032,16 @@ def ra_aggregator(state: NicheResearchState) -> dict:
     }
     all_sources.sort(key=lambda x: step_priority.get(x.get("_step", ""), 9))
 
-    # Build web block for LLM consumption
-    web_block = "\n".join(
-        f"[{r.get('_step','Web')} | {r.get('source','?')}] {r['title'][:120]}\n"
-        f"  URL: {r['url']}\n"
-        f"  Details: {r.get('snippet','')[:200]}"
-        for r in all_sources[:80]
-        if r.get("url", "").startswith("http")
-    ) or "No sources found."
+    # Build a more focused web_block with better structure
+    web_block_lines = []
+    for idx, r in enumerate(all_sources[:60], 1):  # Limit to 60 sources for token efficiency
+        if r.get("url", "").startswith("http"):
+            step = r.get('_step', 'Web')
+            title = r.get('title', '')[:100]
+            snippet = r.get('snippet', '')[:150]
+            web_block_lines.append(f"{idx}. [{step}] {title}\n   {snippet}")
+    
+    web_block = "\n\n".join(web_block_lines) or "No sources found."
 
     logger.info(f"[ResearchAgent] Aggregator: {len(all_sources)} total unique sources")
     return {"all_sources": all_sources, "web_block": web_block}
@@ -2061,54 +2063,85 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
     ) or "No YouTube signals found."
 
     system_prompt = (
-        f"{custom_prompt}\n\n"
-        "You are a YouTube video idea generator. Generate EXACTLY 10 ranked video ideas.\n\n"
-        "STRICT OUTPUT FORMAT - Return ONLY this JSON structure (no markdown, no backticks):\n"
-        '{"ideas": [{"rank": 1, "viral_score": 85, "title": "Compelling YouTube Title Here", '
-        '"hook": "Opening hook for first 15 seconds", "core_angle": "Unique perspective", '
-        '"why_trending": "Why this is trending now", '
-        '"trend_sources": [{"platform": "Google News", "title": "Source title", "url": "https://example.com"}], '
-        '"seo_keywords": ["keyword1", "keyword2", "keyword3"], '
-        '"best_format": "Standard", "format_reason": "Why this format", '
-        '"risk_level": "Low", "description": "2-3 sentence description"}], '
-        '"trend_summary": "Summary of trends"}\n\n'
+        "You are an elite YouTube video strategist. Your job: analyze research data and create 10 viral video ideas.\n\n"
+        f"CHANNEL CONTEXT:\n{custom_prompt}\n\n"
+        "OUTPUT FORMAT (return ONLY this JSON, no markdown):\n"
+        '{"ideas": [\n'
+        '  {"rank": 1, "viral_score": 88, "title": "Why Dark Psychology is Trending in 2025", \n'
+        '   "hook": "Most people don\'t realize they\'re being manipulated every day...", \n'
+        '   "core_angle": "Expose manipulation tactics used in daily life", \n'
+        '   "why_trending": "Recent viral TikTok exposed psychological manipulation", \n'
+        '   "trend_sources": [{"platform": "Google News", "title": "...", "url": "..."}], \n'
+        '   "seo_keywords": ["dark psychology", "manipulation", "mind control"], \n'
+        '   "best_format": "Standard", "format_reason": "Deep dive format", \n'
+        '   "risk_level": "Medium", "description": "Explore psychological manipulation tactics"}\n'
+        '], "trend_summary": "..."}\n\n'
         "CRITICAL RULES:\n"
-        "1. Return ONLY the JSON object, nothing else\n"
-        "2. Do NOT wrap in markdown code blocks\n"
-        "3. Escape all quotes inside strings\n"
-        "4. Generate creative, compelling YouTube titles, not just keywords\n"
-        "5. Each title should be 40-80 characters, attention-grabbing\n"
-        "6. Base ideas on the research data provided"
+        "1. Titles MUST be compelling YouTube titles (40-80 chars), NOT raw keywords\n"
+        "2. Example GOOD: 'Why Dark Psychology is Trending in 2025'\n"
+        "3. Example BAD: '[High Search Volume] dark psychology'\n"
+        "4. Base ALL ideas on the research data provided\n"
+        "5. Return ONLY the JSON object, no extra text\n"
+        "6. Escape all quotes inside strings with backslash"
     )
 
     human_prompt = (
-        f"NICHE: {niche}\n"
-        f"KEYWORDS: {', '.join(keywords[:8])}\n\n"
-        f"RESEARCH DATA:\n{web_block[:15000]}\n\n"
-        f"YOUTUBE SIGNALS:\n{yt_block}\n\n"
-        "Generate 10 ranked video ideas. If research is sparse, use your knowledge of this niche. "
-        "Prioritize non-YouTube trending topics (News, Reddit, Twitter, Blogs). "
-        "Use YouTube signals for style only."
+        f"CHANNEL NICHE: {niche}\n"
+        f"TARGET KEYWORDS: {', '.join(keywords[:6])}\n\n"
+        f"=== 8-STEP RESEARCH DATA ===\n{web_block[:18000]}\n\n"
+        f"=== YOUTUBE STYLE REFERENCE ===\n{yt_block[:2000]}\n\n"
+        "TASK: Generate 10 ranked video ideas.\n\n"
+        "REQUIREMENTS:\n"
+        "- Each title must be a proper YouTube title (e.g., 'The Dark Truth About Mind Control')\n"
+        "- NOT raw keywords (e.g., NOT '[High Search Volume] mind control')\n"
+        "- Base ideas on the research data above\n"
+        "- Prioritize trending topics from News, Reddit, Twitter, Blogs\n"
+        "- Use YouTube data only for style/format reference\n"
+        "- Include compelling hooks and clear angles\n\n"
+        "Return the JSON now:"
     )
 
     try:
-        # Try WITHOUT require_json first (more compatible)
+        # First attempt: Standard synthesis with require_json=False for better compatibility
+        logger.info("[ResearchAgent] Synthesizer attempt 1: Standard synthesis")
         content = call_groq_api_with_retries(
-            system_prompt, human_prompt, temperature=0.7, max_tokens=12000, require_json=False
+            system_prompt, human_prompt, temperature=0.8, max_tokens=12000, require_json=False
         )
         
         # Log the raw response for debugging
-        logger.info(f"[ResearchAgent] Synthesizer raw response length: {len(content)} chars")
-        logger.info(f"[ResearchAgent] Synthesizer raw response preview: {content[:500]}")
+        logger.info(f"[ResearchAgent] Synthesizer response length: {len(content)} chars")
+        logger.info(f"[ResearchAgent] Response preview: {content[:300]}")
         
         # Try to parse the JSON
         parsed = parse_llm_json(content, context="ra_synthesizer")
         ideas = parsed.get("ideas", [])
         trend_summary = parsed.get("trend_summary", "")
         
-        # If ideas is empty, try again WITH require_json=True
-        if not ideas or len(ideas) == 0:
-            logger.warning("[ResearchAgent] First attempt returned empty ideas, retrying with require_json=True...")
+        # Validate ideas quality
+        if ideas and len(ideas) >= 5:
+            # Check if titles look like proper YouTube titles (not raw keywords)
+            good_titles = 0
+            for idea in ideas:
+                title = idea.get("title", "")
+                # Bad patterns: starts with [, contains "search volume", all lowercase, etc.
+                if title and not title.startswith("[") and "search volume" not in title.lower() and len(title) > 20:
+                    good_titles += 1
+            
+            if good_titles >= 5:
+                logger.info(f"[ResearchAgent] Synthesis SUCCESS: {len(ideas)} ideas, {good_titles} good titles")
+            else:
+                logger.warning(f"[ResearchAgent] Synthesis produced low-quality titles ({good_titles}/{len(ideas)}), retrying...")
+                raise ValueError("Low quality titles detected")
+        else:
+            logger.warning(f"[ResearchAgent] Synthesis produced only {len(ideas)} ideas, retrying...")
+            raise ValueError(f"Only {len(ideas)} ideas generated")
+        
+    except Exception as e1:
+        logger.warning(f"[ResearchAgent] Attempt 1 failed: {e1}")
+        
+        try:
+            # Second attempt: With require_json=True for stricter JSON output
+            logger.info("[ResearchAgent] Synthesizer attempt 2: With require_json=True")
             content = call_groq_api_with_retries(
                 system_prompt, human_prompt, temperature=0.7, max_tokens=12000, require_json=True
             )
@@ -2116,11 +2149,16 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
             parsed = parse_llm_json(content, context="ra_synthesizer_retry")
             ideas = parsed.get("ideas", [])
             trend_summary = parsed.get("trend_summary", "")
-        
-        # If STILL empty, raise to trigger fallback
-        if not ideas or len(ideas) == 0:
-            logger.error("[ResearchAgent] Both attempts returned empty ideas array")
-            raise ValueError("Synthesizer returned empty ideas array after 2 attempts")
+            
+            if not ideas or len(ideas) < 5:
+                raise ValueError(f"Retry produced only {len(ideas)} ideas")
+            
+            logger.info(f"[ResearchAgent] Retry SUCCESS: {len(ideas)} ideas")
+            
+        except Exception as e2:
+            logger.error(f"[ResearchAgent] Attempt 2 also failed: {e2}")
+            # Both attempts failed, trigger fallback
+            raise ValueError(f"Both synthesis attempts failed: {e1}, {e2}")
 
         # Validate + clean source URLs — keep LLM sources even if not in real_urls
         # (LLM may paraphrase URLs slightly; strict matching causes empty sources)
@@ -2181,131 +2219,28 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
         return {"raw_ideas": ideas, "trend_summary": trend_summary}
 
     except Exception as e:
-        logger.error(f"[ResearchAgent] Synthesizer FAILED: {e}\n{traceback.format_exc()}")
+        logger.error(f"[ResearchAgent] SYNTHESIZER COMPLETELY FAILED: {e}\n{traceback.format_exc()}")
         
-        # Generate fallback ideas from the research data using a simpler LLM call
-        logger.info("[ResearchAgent] Attempting simplified LLM fallback...")
+        # Return an error idea that shows what went wrong
+        error_idea = {
+            "rank": 1,
+            "viral_score": 0,
+            "title": "ERROR: AI Synthesis Failed",
+            "description": f"The LLM synthesis failed after 2 attempts. Error: {str(e)[:200]}. Check Render logs for details.",
+            "hook": "The AI synthesis encountered an error",
+            "core_angle": "N/A",
+            "why_trending": "Error during synthesis",
+            "trend_sources": [],
+            "seo_keywords": keywords[:4],
+            "best_format": "Standard",
+            "format_reason": "N/A",
+            "risk_level": "High",
+            "tags": keywords[:4],
+            "sources": []
+        }
         
-        try:
-            # Try a much simpler prompt that's less likely to fail
-            simple_prompt = (
-                f"Generate 10 YouTube video titles for a channel about: {niche}\n\n"
-                f"Keywords: {', '.join(keywords[:5])}\n\n"
-                "Return ONLY a JSON array of titles:\n"
-                '["Title 1", "Title 2", "Title 3", "Title 4", "Title 5", '
-                '"Title 6", "Title 7", "Title 8", "Title 9", "Title 10"]\n\n'
-                "Make titles compelling, 40-80 characters each."
-            )
-            
-            simple_response = call_groq_api_with_retries(
-                "You are a YouTube title generator. Return only a JSON array of 10 titles.",
-                simple_prompt,
-                temperature=0.8,
-                max_tokens=1000,
-                require_json=False
-            )
-            
-            # Try to parse the simple response
-            import json
-            titles = json.loads(simple_response.strip())
-            
-            if isinstance(titles, list) and len(titles) >= 10:
-                logger.info("[ResearchAgent] Simple LLM fallback succeeded!")
-                fallback_ideas = []
-                for idx, title in enumerate(titles[:10]):
-                    fallback_ideas.append({
-                        "rank": idx + 1,
-                        "viral_score": 75 - (idx * 2),
-                        "title": str(title),
-                        "description": f"A video exploring {title.lower()}",
-                        "hook": f"What if I told you about {title[:50]}?",
-                        "core_angle": f"Unique perspective on {niche}",
-                        "why_trending": f"Trending topic in {niche}",
-                        "trend_sources": [],
-                        "seo_keywords": keywords[:4],
-                        "best_format": "Standard",
-                        "format_reason": "Engaging format for this topic",
-                        "risk_level": "Low",
-                        "tags": keywords[:4],
-                        "sources": []
-                    })
-                
-                trend_summary = f"Generated {len(fallback_ideas)} ideas using simplified AI synthesis for {niche}."
-                return {"raw_ideas": fallback_ideas, "trend_summary": trend_summary}
-        
-        except Exception as simple_err:
-            logger.error(f"[ResearchAgent] Simple LLM fallback also failed: {simple_err}")
-        
-        # Last resort: Generate from research data
-        logger.info("[ResearchAgent] Using research data fallback...")
-        fallback_ideas = []
-        
-        # Extract top sources from research
-        all_sources = state.get("all_sources", [])
-        if all_sources and len(all_sources) >= 3:
-            # Create ideas from top trending sources
-            for idx, src in enumerate(all_sources[:10]):
-                title = src.get("title", "")
-                snippet = src.get("snippet", "")
-                url = src.get("url", "")
-                source_type = src.get("_step", "Web")
-                
-                if title and len(title) > 10:
-                    # Convert source title to YouTube-style title
-                    yt_title = title[:70] if len(title) <= 70 else title[:67] + "..."
-                    
-                    fallback_ideas.append({
-                        "rank": idx + 1,
-                        "viral_score": 75 - (idx * 3),
-                        "title": yt_title,
-                        "description": snippet[:200] if snippet else f"Trending topic from {source_type}",
-                        "hook": f"What if I told you about {title[:60]}?",
-                        "core_angle": f"Explore: {title[:80]}",
-                        "why_trending": f"Currently trending on {source_type}",
-                        "trend_sources": [{"platform": source_type, "title": title, "url": url}],
-                        "seo_keywords": keywords[:4],
-                        "best_format": "Standard",
-                        "format_reason": "Based on trending research",
-                        "risk_level": "Medium",
-                        "tags": keywords[:4],
-                        "sources": [{"title": title, "url": url, "platform": source_type}]
-                    })
-        
-        # If still no ideas, create generic ones based on niche
-        if len(fallback_ideas) == 0:
-            generic_topics = [
-                f"The Psychology Behind {niche}",
-                f"5 Surprising Facts About {niche}",
-                f"How {niche} Changed My Life",
-                f"The Science of {niche} Explained",
-                f"Common Myths About {niche} Debunked",
-                f"Why {niche} Matters More Than Ever",
-                f"The Future of {niche}",
-                f"{niche}: What Experts Don't Tell You",
-                f"Mastering {niche} in 2025",
-                f"The Dark Side of {niche}",
-            ]
-            
-            for idx, topic in enumerate(generic_topics):
-                fallback_ideas.append({
-                    "rank": idx + 1,
-                    "viral_score": 65 - (idx * 2),
-                    "title": topic,
-                    "description": f"A comprehensive exploration of {topic.lower()}",
-                    "hook": f"You won't believe what I discovered about {niche}...",
-                    "core_angle": f"Unique perspective on {niche}",
-                    "why_trending": f"{niche} is gaining attention in 2025",
-                    "trend_sources": [],
-                    "seo_keywords": keywords[:4],
-                    "best_format": "Standard",
-                    "format_reason": "Evergreen content format",
-                    "risk_level": "Low",
-                    "tags": keywords[:4],
-                    "sources": []
-                })
-        
-        trend_summary = f"AI synthesis failed. Generated {len(fallback_ideas)} ideas from research data and niche analysis."
-        return {"raw_ideas": fallback_ideas[:10], "trend_summary": trend_summary}
+        trend_summary = f"SYNTHESIS ERROR: {str(e)[:300]}. Please check your Groq API keys and quotas."
+        return {"raw_ideas": [error_idea], "trend_summary": trend_summary}
 
 
 # ── Final Formatter Node ──────────────────────────────────────────────────────
