@@ -283,7 +283,6 @@ const ChannelAnalyzer = () => {
             <div className="adv-chart-panel">
               <div className="adv-chart-header">
                 <span className="adv-chart-title">CONTENT DISTRIBUTION</span>
-                <span className="adv-btn-details">View Details</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '20px' }}>
                 <div style={{ width: '200px', height: '200px' }}>
@@ -316,7 +315,6 @@ const ChannelAnalyzer = () => {
             <div className="adv-chart-panel">
               <div className="adv-chart-header">
                 <span className="adv-chart-title">AVERAGE VIEWS BY UPLOAD DAY</span>
-                <span className="adv-btn-details">View Details</span>
               </div>
               <div style={{ height: '220px', width: '100%', marginTop: '20px' }}>
                 <ResponsiveContainer width="100%" height="100%">
