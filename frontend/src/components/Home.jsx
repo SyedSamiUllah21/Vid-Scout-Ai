@@ -1,21 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionTemplate, useMotionValue, animate } from 'framer-motion';
+import { Stars } from '@react-three/drei';
+import { Canvas } from '@react-three/fiber';
+import { FiArrowRight } from 'react-icons/fi';
+
+const AURORA_COLORS = ['#13FFAA', '#1E67C6', '#CE84CF', '#DD335C'];
 
 const Home = ({ setActiveView }) => {
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [showAbout, setShowAbout]       = useState(false);
-  const dropdownRef = useRef(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handler = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  const [showAbout, setShowAbout] = useState(false);
 
   const hexToRgb = (hex) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -146,6 +138,21 @@ const Home = ({ setActiveView }) => {
 
   const heroRef = React.useRef(null);
 
+  // Aurora color animation
+  const auroraColor = useMotionValue(AURORA_COLORS[0]);
+  useEffect(() => {
+    const controls = animate(auroraColor, AURORA_COLORS, {
+      ease: 'easeInOut',
+      duration: 10,
+      repeat: Infinity,
+      repeatType: 'mirror',
+    });
+    return () => controls.stop();
+  }, []);
+  const backgroundImage = useMotionTemplate`radial-gradient(125% 125% at 50% 0%, #020617 50%, ${auroraColor})`;
+  const border = useMotionTemplate`1px solid ${auroraColor}`;
+  const boxShadow = useMotionTemplate`0px 4px 24px ${auroraColor}`;
+
   const handleMouseMove = (e) => {
     if (!heroRef.current) return;
     const rect = heroRef.current.getBoundingClientRect();
@@ -158,113 +165,154 @@ const Home = ({ setActiveView }) => {
   return (
     <div className="home-dashboard" style={{ position: 'relative' }}>
 
-      {/* ── Navbar ── */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '18px 40px',
-        background: 'linear-gradient(180deg, rgba(10,5,20,0.85) 0%, transparent 100%)',
-        backdropFilter: 'blur(8px)',
-      }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-          <div style={{ background: '#ff2a2a', borderRadius: '6px', width: '34px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 16px rgba(255,42,42,0.5)' }}>
-            <i className="fa-solid fa-play" style={{ color: '#550000', fontSize: '0.75rem', marginLeft: '2px' }}></i>
+      {/* ── Aurora Hero ── */}
+      <motion.section
+        style={{ backgroundImage }}
+        className="aurora-hero"
+      >
+        {/* Navbar sits inside the aurora section */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '18px 40px',
+        }}>
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+            <div style={{ background: '#ff2a2a', borderRadius: '6px', width: '34px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 16px rgba(255,42,42,0.5)' }}>
+              <i className="fa-solid fa-play" style={{ color: '#550000', fontSize: '0.75rem', marginLeft: '2px' }}></i>
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 900, letterSpacing: '0.5px', display: 'flex', gap: '6px' }}>
+              <span style={{ color: '#fff' }}>VID SCOUT</span>
+              <span style={{ color: '#a855f7', textShadow: '0 0 12px rgba(168,85,247,0.7)' }}>AI</span>
+            </div>
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 900, letterSpacing: '0.5px', display: 'flex', gap: '6px' }}>
-            <span style={{ color: '#fff' }}>VID SCOUT</span>
-            <span style={{ color: '#a855f7', textShadow: '0 0 12px rgba(168,85,247,0.7)' }}>AI</span>
-          </div>
-        </div>
 
-        {/* Nav links */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-
-          {/* All Tools dropdown */}
-          <div ref={dropdownRef} style={{ position: 'relative' }}>
+          {/* Nav links */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* About */}
             <button
-              onClick={() => setDropdownOpen(o => !o)}
+              onClick={() => setShowAbout(true)}
               style={{
-                background: dropdownOpen ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.05)',
-                border: `1px solid ${dropdownOpen ? 'rgba(168,85,247,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
                 borderRadius: '10px', padding: '9px 18px',
                 color: '#fff', fontSize: '0.9rem', fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-                transition: 'all 0.2s',
+                cursor: 'pointer', transition: 'all 0.2s',
               }}
+              onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,0.1)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.1)'; }}
             >
-              <i className="fa-solid fa-grid-2" style={{ color: '#a855f7', fontSize: '0.85rem' }}></i>
-              All Tools
-              <i className={`fa-solid fa-chevron-${dropdownOpen ? 'up' : 'down'}`} style={{ fontSize: '0.7rem', opacity: 0.6 }}></i>
+              About
             </button>
-
-            <AnimatePresence>
-              {dropdownOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.97 }}
-                  transition={{ duration: 0.15 }}
-                  style={{
-                    position: 'absolute', top: 'calc(100% + 10px)', right: 0,
-                    background: 'rgba(14,8,28,0.97)',
-                    border: '1px solid rgba(168,85,247,0.25)',
-                    borderRadius: '14px', padding: '8px',
-                    minWidth: '240px',
-                    boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 0 1px rgba(168,85,247,0.1)',
-                    backdropFilter: 'blur(20px)',
-                    zIndex: 200,
-                  }}
-                >
-                  {tools.map(tool => (
-                    <button
-                      key={tool.id}
-                      onClick={() => { setActiveView(tool.id); setDropdownOpen(false); }}
-                      style={{
-                        width: '100%', background: 'transparent',
-                        border: 'none', borderRadius: '9px',
-                        padding: '10px 14px', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '12px',
-                        transition: 'all 0.15s', textAlign: 'left',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(168,85,247,0.1)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <div style={{
-                        width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
-                        background: `${tool.color}20`, border: `1px solid ${tool.color}40`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <i className={`fa-solid ${tool.icon}`} style={{ color: tool.color, fontSize: '0.85rem' }}></i>
-                      </div>
-                      <div>
-                        <p style={{ color: '#fff', fontSize: '0.88rem', fontWeight: 600, margin: 0 }}>{tool.title}</p>
-                        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', margin: 0, marginTop: '1px' }}>{tool.description.substring(0, 45)}…</p>
-                      </div>
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
-
-          {/* About */}
-          <button
-            onClick={() => setShowAbout(true)}
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px', padding: '9px 18px',
-              color: '#fff', fontSize: '0.9rem', fontWeight: 700,
-              cursor: 'pointer', transition: 'all 0.2s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,0.1)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.2)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.1)'; }}
-          >
-            About
-          </button>
         </div>
-      </div>
+
+        {/* Hero content */}
+        <div style={{
+          position: 'relative',
+          zIndex: 10,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          width: '100%',
+          padding: '0 20px',
+        }}>
+          <motion.span
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            style={{
+              marginBottom: '28px',
+              display: 'inline-flex', alignItems: 'center', gap: '10px',
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.18)',
+              borderRadius: '999px',
+              padding: '10px 24px',
+              fontSize: '1rem',
+              color: 'rgba(255,255,255,0.85)',
+              fontWeight: 700,
+              letterSpacing: '1px',
+            }}
+          >
+            <i className="fa-brands fa-youtube" style={{ color: '#ff2a2a', fontSize: '1.1rem' }}></i>
+            WELCOME TO VID SCOUT AI
+          </motion.span>
+
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.15 }}
+            style={{
+              maxWidth: '820px',
+              width: '100%',
+              fontSize: 'clamp(2.6rem, 5vw, 5rem)',
+              fontWeight: 900,
+              lineHeight: 1.1,
+              letterSpacing: '-2px',
+              color: '#ffffff',
+              margin: '0 auto 28px auto',
+              textAlign: 'center',
+            }}
+          >
+            The Ultimate YouTube<br />
+            <span className="hero-gradient-text">Creator Arsenal</span>
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.3 }}
+            style={{
+              maxWidth: '580px',
+              width: '100%',
+              fontSize: 'clamp(1rem, 1.6vw, 1.2rem)',
+              color: 'rgba(255,255,255,0.6)',
+              lineHeight: 1.75,
+              margin: '0 auto 48px auto',
+              textAlign: 'center',
+            }}
+          >
+            Powerful tools to analyze, optimize, and grow your YouTube channel with data-driven insights.
+          </motion.p>
+
+          <motion.button
+            whileHover={{ scale: 1.015 }}
+            whileTap={{ scale: 0.985 }}
+            onClick={() => {
+              document.querySelector('.tools-section')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.45 }}
+            style={{
+              border,
+              boxShadow,
+              display: 'inline-flex', alignItems: 'center', gap: '10px',
+              background: 'rgba(2,6,23,0.15)',
+              borderRadius: '999px',
+              padding: '16px 40px',
+              color: '#f1f5f9',
+              fontSize: '1.1rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              letterSpacing: '0.3px',
+            }}
+          >
+            Explore All Tools
+            <FiArrowRight style={{ transition: 'transform 0.2s', fontSize: '1.1rem' }} />
+          </motion.button>
+        </div>
+
+        {/* Stars canvas background */}
+        <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+          <Canvas>
+            <Stars radius={50} count={2500} factor={4} fade speed={2} />
+          </Canvas>
+        </div>
+      </motion.section>
 
       {/* ── About Modal ── */}
       <AnimatePresence>
@@ -342,94 +390,6 @@ const Home = ({ setActiveView }) => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <div 
-        className="home-hero-full" 
-        ref={heroRef} 
-        onMouseMove={handleMouseMove}
-      >
-        <div className="hero-glow-overlay"></div>
-        <div className="hero-content">
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="hero-badge"
-          >
-            <i className="fa-brands fa-youtube" style={{ color: '#ff2a2a', filter: 'drop-shadow(0 0 6px rgba(255, 42, 42, 0.6))', fontSize: '1.2rem' }}></i> 
-            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontWeight: 600, opacity: 0.85, letterSpacing: '0.5px' }}>WELCOME TO</span>
-              <span style={{ color: '#ffffff', fontWeight: 900, letterSpacing: '0.5px', textShadow: '0 0 10px rgba(255, 255, 255, 0.3)' }}>VID SCOUT</span>
-              <span style={{ color: '#a855f7', fontWeight: 900, textShadow: '0 0 10px rgba(168, 85, 247, 0.6)' }}>AI</span>
-            </span>
-          </motion.div>
-          <motion.h1
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="hero-title"
-          >
-            The Ultimate <br />
-            <span className="gradient-text">YouTube Creator Arsenal</span>
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
-            className="hero-subtitle"
-          >
-            Powerful tools to analyze, optimize, and grow your YouTube channel with data-driven insights.
-          </motion.p>
-        </div>
-        
-        <motion.img 
-          initial={{ opacity: 0, x: -100, y: 20, rotateZ: -10 }}
-          animate={{ 
-            opacity: 1, 
-            x: 0, 
-            y: [0, -15, 0],
-            rotateX: [0, 8, 0],
-            rotateY: [0, -12, 0],
-            rotateZ: [-10, -14, -10]
-          }}
-          transition={{ 
-            opacity: { duration: 1, delay: 0.5 },
-            x: { duration: 1, delay: 0.5 },
-            y: { duration: 6, repeat: Infinity, ease: "easeInOut", delay: 0.5 },
-            rotateX: { duration: 7, repeat: Infinity, ease: "easeInOut", delay: 0.5 },
-            rotateY: { duration: 8, repeat: Infinity, ease: "easeInOut", delay: 0.5 },
-            rotateZ: { duration: 9, repeat: Infinity, ease: "easeInOut", delay: 0.5 }
-          }}
-          src="/mockup_left.png" 
-          className="hero-mockup mockup-left" 
-          alt="Graph Mockup" 
-        />
-        
-        <motion.img 
-          initial={{ opacity: 0, x: 100, y: 20, rotateZ: 10 }}
-          animate={{ 
-            opacity: 1, 
-            x: 0, 
-            y: [0, -20, 0],
-            rotateX: [0, 10, 0],
-            rotateY: [0, 15, 0],
-            rotateZ: [10, 14, 10]
-          }}
-          transition={{ 
-            opacity: { duration: 1, delay: 0.5 },
-            x: { duration: 1, delay: 0.5 },
-            y: { duration: 7, repeat: Infinity, ease: "easeInOut", delay: 0.5 },
-            rotateX: { duration: 8, repeat: Infinity, ease: "easeInOut", delay: 0.5 },
-            rotateY: { duration: 6, repeat: Infinity, ease: "easeInOut", delay: 0.5 },
-            rotateZ: { duration: 9, repeat: Infinity, ease: "easeInOut", delay: 0.5 }
-          }}
-          src="/mockup_right.png" 
-          className="hero-mockup mockup-right" 
-          alt="Chart Mockup" 
-        />
-
-        <div className="wave-bg"></div>
-      </div>
 
       <div className="tools-section">
         <div className="section-header">

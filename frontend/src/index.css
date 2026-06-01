@@ -82,7 +82,7 @@ body {
 
 body {
   font-family: var(--font);
-  background: linear-gradient(145deg, var(--bg-start) 0%, var(--bg-mid) 50%, var(--bg-end) 100%);
+  background: #020617;
   color: var(--text-white);
   display: flex;
   justify-content: center;
@@ -93,32 +93,10 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-/* Animated background blobs (subdued for premium look) */
+/* Animated background blobs — disabled, aurora handles the background */
 body::before,
 body::after {
-  content: '';
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(140px);
-  opacity: 0.05;
-  z-index: 0;
-  pointer-events: none;
-}
-
-body::before {
-  width: 700px;
-  height: 700px;
-  background: radial-gradient(circle, #a855f7, transparent 70%);
-  top: -200px;
-  left: -150px;
-}
-
-body::after {
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, #3b82f6, transparent 70%);
-  bottom: -150px;
-  right: -100px;
+  display: none;
 }
 
 .hidden {
@@ -136,6 +114,7 @@ body::after {
   height: 100vh;
   position: relative;
   z-index: 1;
+  background: transparent;
 }
 
 /* ── Sidebar ──────────────────────────────────────────────── */
@@ -144,13 +123,17 @@ body::after {
    zoomed-in look on normal screens. */
 .sidebar {
   width: 240px; /* LOCKED */
-  background: #110521;
+  background: rgba(11, 3, 22, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-right: 1px solid rgba(168, 85, 247, 0.3);
   box-shadow: 10px 0 40px rgba(168, 85, 247, 0.15);
   display: flex;
   flex-direction: column;
   padding: 24px 16px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .sidebar .logo {
@@ -262,9 +245,11 @@ body::after {
 .main-content {
   flex: 1;
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: transparent;
 }
 
 .tool-view {
@@ -274,6 +259,7 @@ body::after {
   flex-direction: column;
   align-items: center;
   overflow-y: auto;
+  background: transparent;
 }
 
 .tool-view>div:not(.dashboard) {
@@ -1926,6 +1912,29 @@ select#trendTimeframe option:checked {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* -- AURORA HERO -------------------------------------------- */
+.aurora-hero {
+  width: 100%;
+  min-height: 100vh;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 160px 20px 120px;
+  overflow: hidden;
+  background-color: #020617;
+}
+
+.hero-gradient-text {
+  display: inline-block;
+  background: linear-gradient(to bottom right, #ffffff, rgba(255, 255, 255, 0.45));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 /* -- EXACT MOCKUP HOME PAGE ---------------------------------- */

@@ -1,5 +1,5 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-
+const defaultBaseUrl = import.meta.env.MODE === 'development' ? '' : 'https://vid-scout-ai.onrender.com';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || defaultBaseUrl).replace(/\/$/, '');
 const buildUrl = (path) => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return API_BASE ? `${API_BASE}${normalizedPath}` : normalizedPath;

@@ -10,6 +10,7 @@ import TagsGenerator from './components/TagsGenerator';
 import CommunityPosts from './components/CommunityPosts';
 import DescriptionGenerator from './components/DescriptionGenerator';
 import Home from './components/Home';
+import AuroraBackground from './components/AuroraBackground';
 import './index.css';
 
 function App() {
@@ -26,6 +27,8 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* Aurora starfield background — shown on all tool pages */}
+      {activeView !== 'home' && <AuroraBackground />}
       {/* Mobile Header (Visible on ALL pages on mobile) */}
       <div className="mobile-header">
         <button className="mobile-menu-btn" onClick={() => setIsSidebarOpen(true)}>
