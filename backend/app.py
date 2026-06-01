@@ -3400,12 +3400,5 @@ def generate_community_posts():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    is_dev = os.environ.get("FLASK_ENV", "development").lower() == "development"
-
-    if is_dev:
-        logger.info(f"Starting Flask DEV server on port {port}")
-        app.run(debug=True, host="0.0.0.0", port=port)
-    else:
-        from waitress import serve
-        logger.info(f"Starting Waitress PRODUCTION server on port {port}")
-        serve(app, host="0.0.0.0", port=port, threads=6)
+    logger.info(f"Starting Flask DEV server on port {port}")
+    app.run(debug=False, host="0.0.0.0", port=port)
