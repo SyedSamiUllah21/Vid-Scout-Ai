@@ -1253,29 +1253,33 @@ def call_groq_api_with_retries(system_prompt: str, human_prompt: str, temperatur
             "No API keys configured. Add GROQ_API_KEY or OPENROUTER_API_KEY to your .env file."
         )
     
+    # Groq hard limit is 8192 output tokens — cap it to avoid 400 errors
+    GROQ_MAX_TOKENS = 8000
     groq_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama-3.2-3b-preview"]
     openrouter_models = ["google/gemini-2.0-flash-001", "meta-llama/llama-3.1-8b-instruct:free", "mistralai/mistral-7b-instruct:free"]
     
-    # Build ordered list of (url, headers, model, key_label) tuples to try
+    # Build ordered list of (url, headers, model, key_label, provider_max_tokens) tuples to try
     providers = []
     
-    # Add all Groq keys x models
+    # Add all Groq keys x models — cap tokens at GROQ_MAX_TOKENS
     for key_idx, groq_key in enumerate(groq_keys, 1):
         groq_headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
         for model in groq_models:
-            providers.append(("https://api.groq.com/openai/v1/chat/completions", groq_headers, model, f"Groq-key{key_idx}"))
+            providers.append(("https://api.groq.com/openai/v1/chat/completions", groq_headers, model, f"Groq-key{key_idx}", GROQ_MAX_TOKENS))
     
     # Add all OpenRouter keys x models
     for key_idx, or_key in enumerate(openrouter_keys, 1):
         or_headers = {"Authorization": f"Bearer {or_key}", "Content-Type": "application/json"}
         for model in openrouter_models:
-            providers.append(("https://openrouter.ai/api/v1/chat/completions", or_headers, model, f"OpenRouter-key{key_idx}"))
+            providers.append(("https://openrouter.ai/api/v1/chat/completions", or_headers, model, f"OpenRouter-key{key_idx}", max_tokens))
     
     logger.info(f"[API Helper] Built failover chain with {len(providers)} provider+key+model combos")
     last_error = None
     
-    for idx, (url, headers, model, key_label) in enumerate(providers):
-        logger.info(f"[API Helper] Trying {idx+1}/{len(providers)}: {key_label} / {model}")
+    for idx, (url, headers, model, key_label, provider_max_tokens) in enumerate(providers):
+        # Use the smaller of requested tokens and provider limit
+        effective_tokens = min(max_tokens, provider_max_tokens)
+        logger.info(f"[API Helper] Trying {idx+1}/{len(providers)}: {key_label} / {model} (max_tokens={effective_tokens})")
         
         try:
             payload = {
@@ -1285,7 +1289,7 @@ def call_groq_api_with_retries(system_prompt: str, human_prompt: str, temperatur
                     {"role": "user", "content": human_prompt},
                 ],
                 "temperature": temperature,
-                "max_tokens": max_tokens,
+                "max_tokens": effective_tokens,
             }
             # Force JSON mode for Groq APIs if required (most Groq models support this)
             if require_json and "api.groq.com" in url:
@@ -1295,50 +1299,46 @@ def call_groq_api_with_retries(system_prompt: str, human_prompt: str, temperatur
                 url,
                 headers=headers,
                 json=payload,
-                timeout=60
+                timeout=120  # Increased from 60 to 120 for large responses
             )
             
-            # Only treat HTTP 429 as a rate limit
-            if resp.status_code == 429:
-                logger.info(f"[API Helper] Rate limited (429) for {key_label}/{model}. Trying next...")
-                _time.sleep(2)
-                continue
-            
-            # Check for error responses that indicate rate limiting in the JSON body
+            # Log ALL non-200 responses with full body for debugging
             if resp.status_code != 200:
                 try:
-                    err_json = resp.json()
-                    err_msg = str(err_json.get("error", {}).get("message", ""))
-                    if "rate" in err_msg.lower() or "limit" in err_msg.lower() or "quota" in err_msg.lower():
-                        logger.error(f"[API Helper] Rate/quota error for {key_label}/{model}: {err_msg}. Trying next...")
-                        _time.sleep(2)
-                        continue
+                    err_body = resp.json()
+                    err_msg = str(err_body.get("error", {}).get("message", str(err_body)))
                 except Exception:
-                    pass
-                logger.info(f"[API Helper] API returned status {resp.status_code} for {key_label}/{model}: {resp.text[:200]}")
-                _time.sleep(1)
+                    err_msg = resp.text[:300]
+                logger.error(f"[API Helper] HTTP {resp.status_code} for {key_label}/{model}: {err_msg}")
+                last_error = f"HTTP {resp.status_code}: {err_msg}"
+                if resp.status_code == 429:
+                    _time.sleep(3)
+                else:
+                    _time.sleep(1)
                 continue
                 
             resp_json = resp.json()
             
-            # Check for error field in a 200 response (some APIs do this)
+            # Check for error field in a 200 response
             if "error" in resp_json:
                 err_msg = str(resp_json["error"].get("message", "") if isinstance(resp_json["error"], dict) else resp_json["error"])
-                if "rate" in err_msg.lower() or "limit" in err_msg.lower() or "quota" in err_msg.lower():
-                    logger.info(f"[API Helper] Rate/quota in 200 response for {key_label}/{model}: {err_msg}. Trying next...")
-                    _time.sleep(2)
-                    continue
+                logger.error(f"[API Helper] Error in 200 response for {key_label}/{model}: {err_msg}")
+                last_error = err_msg
+                _time.sleep(2)
+                continue
             
             if "choices" in resp_json and len(resp_json["choices"]) > 0:
                 content = resp_json["choices"][0]["message"]["content"].strip()
-                logger.info(f"[API Helper] Success with {key_label}/{model} ({len(content)} chars)")
+                logger.info(f"[API Helper] SUCCESS with {key_label}/{model} ({len(content)} chars)")
                 return content
             else:
-                logger.info(f"[API Helper] No choices in response from {key_label}/{model}: {str(resp_json)[:200]}")
+                logger.error(f"[API Helper] No choices in response from {key_label}/{model}: {str(resp_json)[:300]}")
+                last_error = f"No choices in response: {str(resp_json)[:200]}"
                 continue
                 
         except requests.exceptions.Timeout:
-            logger.info(f"[API Helper] Timeout for {key_label}/{model}. Trying next...")
+            logger.error(f"[API Helper] Timeout for {key_label}/{model}")
+            last_error = f"Timeout after 120s"
             continue
         except Exception as e:
             last_error = e
@@ -2088,8 +2088,8 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
     human_prompt = (
         f"CHANNEL NICHE: {niche}\n"
         f"TARGET KEYWORDS: {', '.join(keywords[:6])}\n\n"
-        f"=== 8-STEP RESEARCH DATA ===\n{web_block[:18000]}\n\n"
-        f"=== YOUTUBE STYLE REFERENCE ===\n{yt_block[:2000]}\n\n"
+        f"=== 8-STEP RESEARCH DATA ===\n{web_block[:8000]}\n\n"
+        f"=== YOUTUBE STYLE REFERENCE ===\n{yt_block[:1000]}\n\n"
         "TASK: Generate 10 ranked video ideas.\n\n"
         "REQUIREMENTS:\n"
         "- Each title must be a proper YouTube title (e.g., 'The Dark Truth About Mind Control')\n"
@@ -2102,10 +2102,10 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
     )
 
     try:
-        # First attempt: Standard synthesis with require_json=False for better compatibility
+        # First attempt: Standard synthesis
         logger.info("[ResearchAgent] Synthesizer attempt 1: Standard synthesis")
         content = call_groq_api_with_retries(
-            system_prompt, human_prompt, temperature=0.8, max_tokens=12000, require_json=False
+            system_prompt, human_prompt, temperature=0.8, max_tokens=6000, require_json=False
         )
         
         # Log the raw response for debugging
@@ -2143,7 +2143,7 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
             # Second attempt: With require_json=True for stricter JSON output
             logger.info("[ResearchAgent] Synthesizer attempt 2: With require_json=True")
             content = call_groq_api_with_retries(
-                system_prompt, human_prompt, temperature=0.7, max_tokens=12000, require_json=True
+                system_prompt, human_prompt, temperature=0.7, max_tokens=6000, require_json=True
             )
             logger.info(f"[ResearchAgent] Retry response length: {len(content)} chars")
             parsed = parse_llm_json(content, context="ra_synthesizer_retry")
