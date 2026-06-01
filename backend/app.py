@@ -2119,20 +2119,59 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
         trend_summary = parsed.get("trend_summary", "")
 
         # Validate + clean source URLs against real sources
-        real_urls = {s["url"] for s in state.get("all_sources", []) if s.get("url", "").startswith("http")}
+        all_sources = state.get("all_sources", [])
+        real_urls = set()
+        for src in all_sources:
+            if isinstance(src, dict):
+                url = src.get("url")
+                if isinstance(url, str) and url.startswith("http"):
+                    real_urls.add(url)
+                    
         for idea in ideas:
-            idea["viral_score"] = int(idea.get("viral_score", 50))
-            idea["virality_score"] = idea["viral_score"]  # frontend compat
+            if not isinstance(idea, dict):
+                continue
+                
+            v_score = idea.get("viral_score", 50)
+            try:
+                if isinstance(v_score, str):
+                    v_score = int(''.join(filter(str.isdigit, v_score)) or 50)
+                else:
+                    v_score = int(v_score)
+            except Exception:
+                v_score = 50
+                
+            idea["viral_score"] = v_score
+            idea["virality_score"] = v_score  # frontend compat
+            
             # Keep trend_sources as-is but filter to only real URLs where possible
             trend_sources = idea.get("trend_sources", [])
-            validated = [s for s in trend_sources if s.get("url", "").startswith("http") and s["url"] in real_urls]
+            if not isinstance(trend_sources, list):
+                trend_sources = []
+                
+            validated = []
+            for s in trend_sources:
+                if isinstance(s, dict):
+                    url = s.get("url")
+                    if isinstance(url, str) and url.startswith("http") and url in real_urls:
+                        validated.append(s)
+            
             idea["trend_sources"] = validated if validated else trend_sources[:3]
+            
             # Map to frontend schema
-            idea["tags"] = idea.get("seo_keywords", [])[:4]
-            idea["sources"] = [
-                {"title": s.get("title", ""), "url": s.get("url", ""), "platform": s.get("platform", "")}
-                for s in idea.get("trend_sources", [])
-            ]
+            raw_tags = idea.get("seo_keywords", [])
+            idea["tags"] = raw_tags[:4] if isinstance(raw_tags, list) else []
+            
+            safe_sources = []
+            for s in idea.get("trend_sources", []):
+                if isinstance(s, dict):
+                    safe_sources.append({
+                        "title": str(s.get("title", "") or ""), 
+                        "url": str(s.get("url", "") or ""), 
+                        "platform": str(s.get("platform", "") or "")
+                    })
+                elif isinstance(s, str) and s.startswith("http"):
+                    safe_sources.append({"title": "Source", "url": s, "platform": "Web"})
+            idea["sources"] = safe_sources
 
         # Sort by viral score
         ideas.sort(key=lambda x: x.get("viral_score", 0), reverse=True)
@@ -2144,7 +2183,7 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
         return {"raw_ideas": ideas, "trend_summary": trend_summary}
 
     except Exception as e:
-        logger.error(f"[ResearchAgent] Synthesizer FAILED: {e}")
+        logger.error(f"[ResearchAgent] Synthesizer FAILED: {e}\n{traceback.format_exc()}")
         return {"raw_ideas": [], "trend_summary": "Research completed but synthesis failed."}
 
 

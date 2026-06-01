@@ -42,10 +42,10 @@
   --bg-mid: #160829;
   --bg-end: #0d051a;
 
-  --glass-bg: #161b22;
+  --glass-bg: #000000;
   --glass-border: rgba(255, 255, 255, 0.05);
   --glass-blur: 10px;
-  --glass-bg-hover: #1c2128;
+  --glass-bg-hover: #050505;
   --glass-border-hover: rgba(255, 255, 255, 0.1);
 
   --accent-pink: #a855f7;
