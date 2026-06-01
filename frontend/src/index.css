@@ -517,7 +517,7 @@ button#analyzeThumbBtn:disabled {
 }
 
 .glass-card {
-  background: var(--glass-bg);
+  background: #000000 !important;
   border: 1px solid var(--glass-border);
   border-radius: 16px;
   backdrop-filter: blur(var(--glass-blur));
@@ -527,7 +527,7 @@ button#analyzeThumbBtn:disabled {
 }
 
 .glass-card:hover {
-  background: var(--glass-bg-hover);
+  background: #0a0a0a !important;
   border-color: var(--glass-border-hover);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
@@ -1416,7 +1416,7 @@ select#trendTimeframe option:checked {
 }
 
 .analyzer-card-new {
-  background: var(--card-bg);
+  background: #000000 !important;
   border: 1px solid var(--glass-border);
   border-radius: 20px;
   padding: 35px 35px 25px;
