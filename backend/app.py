@@ -933,12 +933,13 @@ def research_tavily(query: str, max_results: int = 5) -> list[dict]:
     """
     Use Tavily AI search with automatic failover to backup API keys if rate limited.
     Uses _get_env() to properly read keys from .env file.
+    If all Tavily keys fail, automatically falls back to DuckDuckGo.
     """
     keys = get_tavily_api_keys()
 
     if not keys:
-        logger.info("[Tavily] No API keys configured. Skipping.")
-        return []
+        logger.info("[Tavily] No API keys configured. Using DuckDuckGo fallback.")
+        return research_duckduckgo(query, max_results)
 
     results = []
     for key in keys:
@@ -975,7 +976,9 @@ def research_tavily(query: str, max_results: int = 5) -> list[dict]:
             logger.error(f"[Tavily] Exception: {e}")
             continue
 
-    return results
+    # All Tavily keys failed — automatic DuckDuckGo fallback
+    logger.info(f"[Tavily] All {len(keys)} keys exhausted. Falling back to DuckDuckGo for: {query}")
+    return research_duckduckgo(query, max_results)
 
 
 def research_google_trends_pytrends(keywords: list, topic: str = "") -> list[dict]:
@@ -2090,12 +2093,29 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
     )
 
     # ── Compact human prompt with research data ───────────────────────────────
+    # Count sources per step for the prompt
+    step_source_counts = {
+        "Google Trends": len([s for s in state.get("all_sources", []) if s.get("_step") == "Google Trends"]),
+        "Google/Bing News": len([s for s in state.get("all_sources", []) if s.get("_step") == "Google/Bing News"]),
+        "Reddit": len([s for s in state.get("all_sources", []) if s.get("_step") == "Reddit"]),
+        "X/Twitter": len([s for s in state.get("all_sources", []) if s.get("_step") == "X/Twitter"]),
+        "YouTube": len([s for s in state.get("all_sources", []) if s.get("_step") == "YouTube"]),
+        "TikTok/Reels": len([s for s in state.get("all_sources", []) if s.get("_step") == "TikTok/Reels"]),
+        "Niche Blogs": len([s for s in state.get("all_sources", []) if s.get("_step") == "Niche Blogs"]),
+        "Forums": len([s for s in state.get("all_sources", []) if s.get("_step") == "Forums"]),
+    }
+    source_breakdown = "\n".join(f"  - {k}: {v} sources" for k, v in step_source_counts.items() if v > 0)
+    
     human_prompt = (
         f"NICHE: {niche}\n"
         f"KEYWORDS: {', '.join(keywords[:5])}\n"
         f"CHANNEL STYLE (recent uploads):\n{yt_style}\n\n"
-        f"RESEARCH DATA (8 sources):\n{web_block[:6000]}\n\n"
-        "Generate 5 best viral ideas based on this research. Return JSON only."
+        f"RESEARCH BREAKDOWN BY PLATFORM:\n{source_breakdown}\n\n"
+        f"FULL RESEARCH DATA (all 8 sources combined):\n{web_block[:6000]}\n\n"
+        "CRITICAL: Each idea MUST cite sources from MULTIPLE platforms (not just Google Trends/News).\n"
+        "Prioritize cross-platform trends (e.g., topic on Reddit + News + YouTube).\n"
+        "Use the [Platform] labels in the research data to cite diverse sources.\n\n"
+        "Generate 5 best viral ideas. Return JSON only."
     )
 
     def _clean_ideas(ideas: list) -> list:
