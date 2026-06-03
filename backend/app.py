@@ -1694,68 +1694,74 @@ class NicheResearchState(TypedDict):
 
 # ── Step 1: Google Trends (pytrends + RSS) ───────────────────────────────────
 def ra_step1_trends(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 1 — Google Trends")
+    logger.info("[ResearchAgent] STEP 1 — Google Trends + Trending Searches")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
 
     results = []
     results += research_google_trends_pytrends(keywords[:3], niche)
     results += research_google_trends_rss(keywords[:5])
 
-    # Also do a Tavily search for Google Trends data on each keyword cluster
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     trend_queries = [
-        f"trending {niche} Google Trends 2025",
-        f"{keywords[0] if keywords else niche} trending searches this week",
+        f"{niche} trending 2025",
+        f"{kw0} Google Trends spike",
+        f"{kw1} trending searches this week",
+        f"what is trending in {niche} right now",
+        f"{niche} most searched topic June 2025",
     ]
-    for q in trend_queries:
-        results += research_tavily(q, 3)
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        futs = [ex.submit(research_tavily, q, 4) for q in trend_queries]
+        for fut in as_completed(futs):
+            try: results += fut.result(timeout=15)
+            except Exception as e: logger.error(f"[Step1] {e}")
 
-    logger.info(f"[ResearchAgent] Step 1 found {len(results)} trend signals")
-    return {"step1_trends": results}
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u); unique.append(r)
+    logger.info(f"[ResearchAgent] Step 1 found {len(unique)} trend signals")
+    return {"step1_trends": unique}
 
 
 # ── Step 2: Google + Bing News (past 7 days) ─────────────────────────────────
 def ra_step2_news(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 2 — Google + Bing News")
+    logger.info("[ResearchAgent] STEP 2 — Google + Bing News (deep)")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
-
-    # Build ALL queries dynamically from the actual niche — no hardcoded topics
     kw0 = keywords[0] if keywords else niche
     kw1 = keywords[1] if len(keywords) > 1 else niche
     kw2 = keywords[2] if len(keywords) > 2 else niche
+    kw3 = keywords[3] if len(keywords) > 3 else niche
 
     news_queries = [
-        niche,
-        f"{kw0} news 2025",
-        f"{kw1} latest research",
-        f"{kw2} trending this week",
-        f"{niche} viral content 2025",
+        niche, f"{kw0} news 2025", f"{kw1} latest research study",
+        f"{kw2} new discovery 2025", f"{kw3} breaking news",
+        f"{niche} viral article this week", f"{niche} psychology study 2025",
+        f"{kw0} controversy debate 2025", f"{niche} expert reveals",
     ]
 
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
     tasks = []
     for q in news_queries:
-        tasks.append(lambda q=q: research_google_news(q, 6))
-        tasks.append(lambda q=q: research_bing_news(q, 5))
-        tasks.append(lambda q=q: research_tavily(q, 4))
+        tasks.append(lambda q=q: research_google_news(q, 5))
+        tasks.append(lambda q=q: research_bing_news(q, 4))
+        tasks.append(lambda q=q: research_tavily(q, 3))
 
-    with ThreadPoolExecutor(max_workers=12) as ex:
+    with ThreadPoolExecutor(max_workers=15) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try:
-                results += fut.result(timeout=20)
-            except Exception as e:
-                logger.error(f"[ResearchAgent][Step2] Task failed: {e}")
+            try: results += fut.result(timeout=20)
+            except Exception as e: logger.error(f"[Step2] {e}")
 
-    # Deduplicate
     seen, unique = set(), []
     for r in results:
         u = r.get("url", "")
         if u and u not in seen:
-            seen.add(u)
-            unique.append(r)
-
+            seen.add(u); unique.append(r)
     logger.info(f"[ResearchAgent] Step 2 found {len(unique)} news articles")
     return {"step2_news": unique}
 
@@ -1765,231 +1771,225 @@ def ra_step3_reddit(state: NicheResearchState) -> dict:
     logger.info("[ResearchAgent] STEP 3 — Reddit Deep Scan")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
+    kw2 = keywords[2] if len(keywords) > 2 else niche
 
-    # Build queries dynamically from the actual niche
     reddit_queries = [
-        niche,
-        f"{keywords[0] if keywords else niche}",
-        f"{keywords[1] if len(keywords) > 1 else niche} reddit discussion",
-        f"{keywords[2] if len(keywords) > 2 else niche} trending",
-        f"{niche} viral this week",
+        f"{niche} site:reddit.com", f"{kw0} reddit hot posts this week",
+        f"{kw1} reddit discussion 2025", f"{kw2} reddit top posts",
+        f"{niche} reddit viral thread", f"{kw0} reddit debate controversy",
+        f"{niche} reddit r/ trending", f"{niche} reddit asked answered",
     ]
 
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        futs = [ex.submit(research_reddit, q, 6) for q in reddit_queries]
-        for fut in as_completed(futs):
-            try:
-                results += fut.result(timeout=15)
-            except Exception as e:
-                logger.error(f"[ResearchAgent][Step3] Reddit task failed: {e}")
+    tasks = [lambda q=q: research_reddit(q, 6) for q in reddit_queries]
+    tasks += [lambda q=q: research_tavily(q, 4) for q in reddit_queries[:4]]
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=15)
+            except Exception as e: logger.error(f"[Step3] {e}")
 
     seen, unique = set(), []
     for r in results:
         u = r.get("url", "")
         if u and u not in seen:
-            seen.add(u)
-            unique.append(r)
-
+            seen.add(u); unique.append(r)
     logger.info(f"[ResearchAgent] Step 3 found {len(unique)} Reddit posts")
     return {"step3_reddit": unique}
 
 
-# ── Step 4: X/Twitter Simulation (Tavily targeted) ───────────────────────────
+# ── Step 4: X/Twitter + LinkedIn + Social Signals ───────────────────────────
 def ra_step4_twitter(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 4 — X/Twitter Trend Simulation")
+    logger.info("[ResearchAgent] STEP 4 — X/Twitter + LinkedIn + Social")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
 
-    # Build queries dynamically from the actual niche
-    twitter_queries = [
-        f"site:twitter.com OR site:x.com {niche} 2025",
-        f"{keywords[0] if keywords else niche} viral tweet thread 2025",
-        f"{keywords[1] if len(keywords) > 1 else niche} trending twitter",
-        f"{keywords[2] if len(keywords) > 2 else niche} x.com discussion",
-        f"{niche} breaking news twitter",
+    social_queries = [
+        f"site:x.com {niche} viral 2025",
+        f"site:twitter.com {kw0} trending thread",
+        f"{kw1} twitter viral tweet 2025",
+        f"{niche} linkedin viral post 2025",
+        f"site:linkedin.com {kw0} trending article",
+        f"{niche} instagram viral post 2025",
+        f"{kw0} facebook viral post 2025",
+        f"{niche} social media viral moment 2025",
+        f"{kw1} influencer talking about trending",
     ]
 
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        futs = [ex.submit(research_tavily, q, 4) for q in twitter_queries]
-        for fut in as_completed(futs):
-            try:
-                results += fut.result(timeout=15)
-            except Exception as e:
-                logger.error(f"[ResearchAgent][Step4] Twitter task failed: {e}")
+    tasks = [lambda q=q: research_tavily(q, 4) for q in social_queries]
+    tasks += [lambda: research_duckduckgo(f"site:x.com {niche} viral 2025", 5)]
+    tasks += [lambda: research_duckduckgo(f"site:linkedin.com {kw0} 2025", 4)]
 
-    # Also DuckDuckGo for X threads
-    results += research_duckduckgo(f"site:x.com OR site:twitter.com {niche} viral 2025", 4)
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=15)
+            except Exception as e: logger.error(f"[Step4] {e}")
 
     seen, unique = set(), []
     for r in results:
         u = r.get("url", "")
         if u and u not in seen:
-            seen.add(u)
-            unique.append(r)
-
+            seen.add(u); unique.append(r)
     logger.info(f"[ResearchAgent] Step 4 found {len(unique)} social signals")
     return {"step4_twitter_sim": unique}
 
 
 # ── Step 5: YouTube Trend Scan ────────────────────────────────────────────────
 def ra_step5_youtube(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 5 — YouTube Trend Scan")
+    logger.info("[ResearchAgent] STEP 5 — YouTube Deep Scan")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
 
-    # Build queries dynamically from the actual niche
-    yt_queries = [
-        niche,
-        f"{keywords[0] if keywords else niche}",
-        f"{keywords[1] if len(keywords) > 1 else niche} 2025",
-        f"{keywords[2] if len(keywords) > 2 else niche} trending",
-        f"{niche} viral",
-        f"{keywords[0] if keywords else niche} experiment",
-    ]
+    yt_queries = [niche, kw0, f"{kw1} 2025", f"{niche} viral",
+                  f"{kw0} secrets revealed", f"{niche} trending video", f"{kw1} most watched"]
 
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        futs = [ex.submit(research_youtube_videos, q, 8, "7d") for q in yt_queries[:5]]
-        for fut in as_completed(futs):
-            try:
-                results += fut.result(timeout=20)
-            except Exception as e:
-                logger.error(f"[ResearchAgent][Step5] YouTube task failed: {e}")
+    tasks = [lambda q=q: research_youtube_videos(q, 8, "7d") for q in yt_queries[:6]]
+    tasks += [lambda q=q: research_tavily(q, 4) for q in [
+        f"site:youtube.com {niche} viral video 2025",
+        f"most viewed youtube {niche} this month",
+        f"youtube trending {kw0} 2025",
+    ]]
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=20)
+            except Exception as e: logger.error(f"[Step5] {e}")
 
     seen, unique = set(), []
     for r in results:
         u = r.get("url", "")
         if u and u not in seen:
-            seen.add(u)
-            unique.append(r)
-
+            seen.add(u); unique.append(r)
     logger.info(f"[ResearchAgent] Step 5 found {len(unique)} YouTube videos")
     return {"step5_youtube": unique}
 
 
-# ── Step 6: TikTok + Instagram Simulation (Tavily) ───────────────────────────
+# ── Step 6: TikTok + Instagram + Short-Form Viral Content ────────────────────
 def ra_step6_shortform(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 6 — TikTok + Instagram Reels Simulation")
+    logger.info("[ResearchAgent] STEP 6 — TikTok + Instagram + Short-Form Viral")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
 
-    # Build queries dynamically from the actual niche
     shortform_queries = [
         f"site:tiktok.com {niche} viral 2025",
-        f"tiktok instagram reels {keywords[0] if keywords else niche} viral",
-        f"tiktok {keywords[1] if len(keywords) > 1 else niche} 100k views 2025",
-        f"instagram reels {keywords[2] if len(keywords) > 2 else niche} viral comments",
-        f"short video {niche} trending this week",
+        f"tiktok {kw0} viral trend 2025",
+        f"tiktok {kw1} 1 million views 2025",
+        f"instagram reels {niche} viral 2025",
+        f"{niche} tiktok trend explained",
+        f"{kw0} short video going viral",
+        f"{niche} youtube shorts viral",
+        f"pinterest {niche} trending 2025",
+        f"{kw1} tiktok sound trending",
     ]
 
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        futs = [ex.submit(research_tavily, q, 4) for q in shortform_queries]
-        for fut in as_completed(futs):
-            try:
-                results += fut.result(timeout=15)
-            except Exception as e:
-                logger.error(f"[ResearchAgent][Step6] Shortform task failed: {e}")
+    tasks = [lambda q=q: research_tavily(q, 4) for q in shortform_queries]
+    tasks += [lambda: research_duckduckgo(f"tiktok {niche} viral 2025", 5)]
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=15)
+            except Exception as e: logger.error(f"[Step6] {e}")
 
     seen, unique = set(), []
     for r in results:
         u = r.get("url", "")
         if u and u not in seen:
-            seen.add(u)
-            unique.append(r)
-
+            seen.add(u); unique.append(r)
     logger.info(f"[ResearchAgent] Step 6 found {len(unique)} short-form signals")
     return {"step6_shortform": unique}
 
 
-# ── Step 7: Niche Blog + Academic Crawl ──────────────────────────────────────
+# ── Step 7: Blogs + Academic + Podcasts + Newsletters + Medium ───────────────
 def ra_step7_blogs(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 7 — Niche Blogs + arxiv + Academic")
+    logger.info("[ResearchAgent] STEP 7 — Blogs + Academic + Podcasts + Newsletters")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
 
-    # Build queries dynamically from the actual niche
-    blog_queries = [
-        f"{niche} blog article 2025",
-        f"{keywords[0] if keywords else niche} research paper published 2025",
-        f"{keywords[1] if len(keywords) > 1 else niche} academic study",
-        f"{niche} expert analysis",
-        f"{keywords[2] if len(keywords) > 2 else niche} industry report",
-        f"arxiv.org {niche} preprint 2025",
-        f"{niche} breakthrough discovery 2025",
+    deep_queries = [
+        f"{niche} blog article 2025", f"{kw0} research paper 2025",
+        f"{kw1} academic study new findings", f"{niche} expert opinion article",
+        f"{kw0} substack newsletter viral", f"site:medium.com {niche} 2025",
+        f"{niche} podcast episode trending 2025", f"arxiv {niche} new study",
+        f"{kw0} psychology today article 2025", f"{kw1} ted talk trending 2025",
+        f"{niche} new book viral 2025",
     ]
 
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    tasks = []
-    for q in blog_queries:
-        tasks.append(lambda q=q: research_tavily(q, 4))
-    # Also DuckDuckGo targeted at niche sources
-    tasks.append(lambda: research_duckduckgo(f"{niche} blog article 2025", 5))
-    tasks.append(lambda: research_rss_blogs(keywords[:4], 6))
+    tasks = [lambda q=q: research_tavily(q, 4) for q in deep_queries]
+    tasks += [lambda: research_duckduckgo(f"{niche} expert blog 2025", 6)]
+    tasks += [lambda: research_rss_blogs(keywords[:5], 8)]
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
+    with ThreadPoolExecutor(max_workers=12) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try:
-                results += fut.result(timeout=20)
-            except Exception as e:
-                logger.error(f"[ResearchAgent][Step7] Blog task failed: {e}")
+            try: results += fut.result(timeout=20)
+            except Exception as e: logger.error(f"[Step7] {e}")
 
     seen, unique = set(), []
     for r in results:
         u = r.get("url", "")
         if u and u not in seen:
-            seen.add(u)
-            unique.append(r)
-
+            seen.add(u); unique.append(r)
     logger.info(f"[ResearchAgent] Step 7 found {len(unique)} blog/academic sources")
     return {"step7_blogs": unique}
 
 
-# ── Step 8: Forum + Community Scan ───────────────────────────────────────────
+# ── Step 8: Forums + Communities + Quora + HN + Discord + Q&A ───────────────
 def ra_step8_forums(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 8 — Forums + Communities")
+    logger.info("[ResearchAgent] STEP 8 — Forums + Communities + Q&A + Discord")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
 
-    # Build queries dynamically from the actual niche
-    forum_queries = [
-        f"site:quora.com {niche}",
-        f"quora {keywords[0] if keywords else niche} question answer 2025",
-        f"forum discussion {niche} community",
-        f"facebook group {niche} posts 2025",
-        f"discussion board {niche} hot debate this week",
-        f"community forum {keywords[1] if len(keywords) > 1 else niche} news",
+    community_queries = [
+        f"site:quora.com {niche} 2025",
+        f"quora {kw0} most asked question 2025",
+        f"site:quora.com {kw1} answer viral",
+        f"{niche} forum community discussion 2025",
+        f"{kw0} discord server trending topic",
+        f"{niche} facebook group viral post",
+        f"{kw0} community debate hot topic",
+        f"{niche} stack exchange question 2025",
+        f"people asking about {niche} 2025",
+        f"{kw1} discussion board new post",
     ]
 
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    tasks = []
-    for q in forum_queries:
-        tasks.append(lambda q=q: research_tavily(q, 4))
-    tasks.append(lambda: research_hackernews(niche, 5))
-    tasks.append(lambda: research_hackernews(keywords[0] if keywords else niche, 5))
+    tasks = [lambda q=q: research_tavily(q, 4) for q in community_queries]
+    tasks += [lambda: research_hackernews(niche, 6)]
+    tasks += [lambda: research_hackernews(kw0, 5)]
+    tasks += [lambda: research_hackernews(kw1, 4)]
+    tasks += [lambda: research_duckduckgo(f"site:quora.com {niche}", 5)]
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=12) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try:
-                results += fut.result(timeout=15)
-            except Exception as e:
-                logger.error(f"[ResearchAgent][Step8] Forum task failed: {e}")
+            try: results += fut.result(timeout=15)
+            except Exception as e: logger.error(f"[Step8] {e}")
 
     seen, unique = set(), []
     for r in results:
         u = r.get("url", "")
         if u and u not in seen:
-            seen.add(u)
-            unique.append(r)
-
+            seen.add(u); unique.append(r)
     logger.info(f"[ResearchAgent] Step 8 found {len(unique)} forum/community signals")
     return {"step8_forums": unique}
 
@@ -2061,27 +2061,32 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
         f"- {r['title'][:80]}" for r in yt_sources[:5]
     ) or "No recent uploads found."
 
-    # ── Compact, token-efficient system prompt ────────────────────────────────
+    # ── Compact but powerful system prompt ────────────────────────────────────
     system_prompt = (
-        "You are an elite YouTube strategist. Analyze the research data and generate "
-        "5 viral video ideas for the given channel niche.\n\n"
+        "You are an elite YouTube strategist. Generate 5 viral video ideas "
+        "backed by deep research across the entire internet.\n\n"
         f"Channel context: {custom_prompt[:300]}\n\n"
-        "Return ONLY this JSON (no markdown, no extra text):\n"
-        '{"ideas":[{"rank":1,"viral_score":92,"title":"Compelling 50-char YouTube title",'
-        '"hook":"First 15-second opening line that grabs attention",'
-        '"core_angle":"The unique angle that makes this video stand out",'
-        '"why_trending":"Specific reason this is trending RIGHT NOW based on research",'
-        '"trend_sources":[{"platform":"Google News","title":"Source title","url":"https://..."}],'
+        "Your job: Analyze the research data below (from 8 diverse sources: "
+        "Google Trends, News, Reddit, Twitter/LinkedIn, YouTube, TikTok/Instagram, "
+        "Blogs/Academic, Forums/Communities) and identify the 5 BEST viral ideas.\n\n"
+        "Return ONLY this JSON:\n"
+        '{"ideas":[{"rank":1,"viral_score":95,"title":"The Dark Secret About [Topic] That Changed Everything",'
+        '"hook":"You won\'t believe what I found buried in the research...",'
+        '"core_angle":"Expose a hidden truth using cross-platform research evidence",'
+        '"why_trending":"[Specific recent event/study/viral moment from research data]",'
+        '"trend_sources":[{"platform":"Google News","title":"[Real title from research]","url":"[Real URL]"}],'
         '"seo_keywords":["kw1","kw2","kw3"],'
         '"best_format":"Standard","risk_level":"Low",'
-        '"description":"2-sentence video concept"}],'
-        '"trend_summary":"2-sentence summary of dominant trends found"}\n\n'
-        "RULES:\n"
-        "- Titles: compelling, 40-70 chars, NOT raw keywords\n"
-        "- GOOD: 'The Dark Truth About Mind Control Nobody Talks About'\n"
-        "- BAD: '[High Search Volume] dark psychology'\n"
-        "- Every idea must be backed by actual research data below\n"
-        "- Rank by viral potential (highest first)"
+        '"description":"A [format] exposing [specific thing] based on [research sources]"}],'
+        '"trend_summary":"[What\'s dominating the research across all platforms]"}\n\n'
+        "CRITICAL RULES:\n"
+        "1. Titles must be YouTube-ready: 40-70 chars, attention-grabbing, NOT keywords\n"
+        "2. GOOD: 'The Shocking Truth About Mind Control in 2026'\n"
+        "3. BAD: 'mind control psychology'\n"
+        "4. why_trending MUST cite specific research (e.g., 'Reddit post with 12K upvotes', 'New NYT article', 'Viral TikTok')\n"
+        "5. Cite real URLs from the research data\n"
+        "6. Prioritize cross-platform trends (e.g., topic trending on both Reddit AND news)\n"
+        "7. Rank by viral potential based on research breadth and recency"
     )
 
     # ── Compact human prompt with research data ───────────────────────────────
