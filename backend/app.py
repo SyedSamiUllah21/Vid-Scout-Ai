@@ -945,29 +945,29 @@ def research_tiktok_trending(query: str, max_results: int = 8) -> list[dict]:
     tiktok_queries = [
         f"site:tiktok.com {query}",
         f"tiktok \"{query}\" viral trend this week",
-        f"tiktok trending {query} 2025",
+        f"tiktok trending {query} this week",
         f"{query} tiktok trend millions views",
         f"viral tiktok about {query} this week",
         f"tiktok {query} sound trending now",
         f"{query} went viral on tiktok",
         f"tokboard {query} trending",
         f"tiktok discover {query} popular",
-        f"{query} tiktok challenge 2025",
+        f"{query} tiktok challenge this week",
     ]
 
     tasks = []
     for q in tiktok_queries[:6]:
-        tasks.append(("DDG", lambda q=q: research_duckduckgo(q, 4)))
+        tasks.append(("Tavily", lambda q=q: research_tavily(q, 4)))
     # Also check aggregator/reporting sites about TikTok trends
     aggregator_queries = [
         f"site:tokboard.com {query}",
         f"site:tokchart.com {query} trending",
         f"site:later.com tiktok trending {query}",
         f"site:socialblade.com tiktok {query}",
-        f"tiktok analytics {query} viral this week 2025",
+        f"tiktok analytics {query} viral this week",
     ]
     for q in aggregator_queries[:3]:
-        tasks.append(("DDG-agg", lambda q=q: research_duckduckgo(q, 3)))
+        tasks.append(("Tavily", lambda q=q: research_tavily(q, 3)))
 
     with ThreadPoolExecutor(max_workers=8) as ex:
         future_map = {ex.submit(fn): name for name, fn in tasks}
@@ -1007,26 +1007,26 @@ def research_instagram_trending(query: str, max_results: int = 8) -> list[dict]:
     ig_queries = [
         f"site:instagram.com {query}",
         f"instagram reels \"{query}\" viral this week",
-        f"instagram reel {query} trending 2025",
+        f"instagram reel {query} trending this week",
         f"{query} went viral on instagram reels",
         f"instagram {query} viral post millions likes",
         f"instagram trending {query} explore page",
-        f"{query} instagram influencer viral 2025",
+        f"{query} instagram influencer viral this week",
         f"instagram reels trend {query} sound",
     ]
 
     tasks = []
     for q in ig_queries[:6]:
-        tasks.append(("DDG", lambda q=q: research_duckduckgo(q, 4)))
+        tasks.append(("Tavily", lambda q=q: research_tavily(q, 4)))
     # Aggregator sites that track Instagram trends
     aggregator_queries = [
         f"site:later.com instagram reels trending {query}",
         f"site:hootsuite.com instagram trend {query}",
-        f"instagram analytics {query} trending this week 2025",
+        f"instagram analytics {query} trending this week",
         f"most viral instagram reels {query} this week",
     ]
     for q in aggregator_queries[:3]:
-        tasks.append(("DDG-agg", lambda q=q: research_duckduckgo(q, 3)))
+        tasks.append(("Tavily", lambda q=q: research_tavily(q, 3)))
 
     with ThreadPoolExecutor(max_workers=8) as ex:
         future_map = {ex.submit(fn): name for name, fn in tasks}
@@ -1065,20 +1065,20 @@ def research_social_aggregators(query: str, max_results: int = 8) -> list[dict]:
         f"site:explodingtopics.com {query}",
         f"site:trends.google.com {query}",
         f"site:buzzsumo.com {query} trending",
-        f"{query} social media trend report this week 2025",
-        f"{query} going viral across social media platforms 2025",
+        f"{query} social media trend report this week",
+        f"{query} going viral across social media platforms this week",
         f"what is trending about {query} on social media right now",
         f"{query} viral moment social media this week",
         f"cross platform viral {query} tiktok instagram twitter",
-        f"{query} snapchat spotlight viral 2025",
-        f"{query} threads viral post 2025",
+        f"{query} snapchat spotlight viral this week",
+        f"{query} threads viral post this week",
         f"site:bsky.app {query}",
         f"{query} most shared social media content this week",
     ]
 
     tasks = []
     for q in aggregator_queries[:8]:
-        tasks.append(("DDG", lambda q=q: research_duckduckgo(q, 3)))
+        tasks.append(("Tavily", lambda q=q: research_tavily(q, 3)))
 
     with ThreadPoolExecutor(max_workers=8) as ex:
         future_map = {ex.submit(fn): name for name, fn in tasks}
@@ -1288,7 +1288,7 @@ def infer_channel_niche(channel_info: dict) -> dict:
             "search_queries": [
                 titles[0][:60] if titles else f"{name} videos",
                 titles[1][:60] if len(titles) > 1 else f"{topic_guess} tips",
-                f"{topic_guess} new research 2025",
+                f"{topic_guess} new research this week",
                 f"best {topic_guess} strategies",
                 f"{topic_guess} explained",
             ],
@@ -1321,7 +1321,7 @@ def deep_research(niche_info: dict | str, timeframe: str) -> list[dict]:
             queries.append(topic[:40])
     else:
         short_niche = str(niche_info)[:60].strip()
-        queries  = [short_niche, f"{short_niche} 2025", f"{short_niche} research"]
+        queries  = [short_niche, f"{short_niche} this week", f"{short_niche} research"]
         keywords = short_niche.split()[:3]
         topic    = short_niche
 
@@ -1882,11 +1882,11 @@ def ra_step1_trends(state: NicheResearchState) -> dict:
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
     trend_queries = [
-        f"{niche} trending 2025",
+        f"{niche} trending this week",
         f"{kw0} Google Trends spike",
         f"{kw1} trending searches this week",
         f"what is trending in {niche} right now",
-        f"{niche} most searched topic June 2025",
+        f"{niche} most searched topic June this week",
     ]
     with ThreadPoolExecutor(max_workers=5) as ex:
         futs = [ex.submit(research_tavily, q, 4) for q in trend_queries]
@@ -1914,10 +1914,10 @@ def ra_step2_news(state: NicheResearchState) -> dict:
     kw3 = keywords[3] if len(keywords) > 3 else niche
 
     news_queries = [
-        niche, f"{kw0} news 2025", f"{kw1} latest research study",
-        f"{kw2} new discovery 2025", f"{kw3} breaking news",
-        f"{niche} viral article this week", f"{niche} psychology study 2025",
-        f"{kw0} controversy debate 2025", f"{niche} expert reveals",
+        niche, f"{kw0} news this week", f"{kw1} latest research study",
+        f"{kw2} new discovery this week", f"{kw3} breaking news",
+        f"{niche} viral article this week", f"{niche} psychology study this week",
+        f"{kw0} controversy debate this week", f"{niche} expert reveals",
     ]
 
     results = []
@@ -1953,7 +1953,7 @@ def ra_step3_reddit(state: NicheResearchState) -> dict:
 
     reddit_queries = [
         f"{niche} site:reddit.com", f"{kw0} reddit hot posts this week",
-        f"{kw1} reddit discussion 2025", f"{kw2} reddit top posts",
+        f"{kw1} reddit discussion this week", f"{kw2} reddit top posts",
         f"{niche} reddit viral thread", f"{kw0} reddit debate controversy",
         f"{niche} reddit r/ trending", f"{niche} reddit asked answered",
     ]
@@ -1988,24 +1988,24 @@ def ra_step4_twitter(state: NicheResearchState) -> dict:
 
     social_queries = [
         # X / Twitter
-        f"site:x.com {niche} viral 2025",
+        f"site:x.com {niche} viral this week",
         f"site:twitter.com {kw0} trending thread",
-        f"{kw1} twitter viral tweet 2025",
+        f"{kw1} twitter viral tweet this week",
         f"site:nitter.net {niche} viral",
         f"{niche} X twitter went viral this week",
         # LinkedIn
-        f"{niche} linkedin viral post 2025",
+        f"{niche} linkedin viral post this week",
         f"site:linkedin.com {kw0} trending article",
         # Threads (Meta)
-        f"site:threads.net {niche} viral 2025",
+        f"site:threads.net {niche} viral this week",
         f"{kw0} threads viral post this week",
         # Bluesky
         f"site:bsky.app {niche} trending",
-        f"{kw1} bluesky viral post 2025",
+        f"{kw1} bluesky viral post this week",
         # Facebook
-        f"{kw0} facebook viral post 2025",
+        f"{kw0} facebook viral post this week",
         # Cross-platform
-        f"{niche} social media viral moment this week 2025",
+        f"{niche} social media viral moment this week",
         f"{kw1} influencer talking about trending",
         f"{kw2} social media debate controversy this week",
     ]
@@ -2013,9 +2013,9 @@ def ra_step4_twitter(state: NicheResearchState) -> dict:
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
     tasks = [lambda q=q: research_tavily(q, 4) for q in social_queries]
-    tasks += [lambda: research_duckduckgo(f"site:x.com {niche} viral 2025", 5)]
-    tasks += [lambda: research_duckduckgo(f"site:linkedin.com {kw0} 2025", 4)]
-    tasks += [lambda: research_duckduckgo(f"site:threads.net {niche} 2025", 4)]
+    tasks += [lambda: research_duckduckgo(f"site:x.com {niche} viral this week", 5)]
+    tasks += [lambda: research_duckduckgo(f"site:linkedin.com {kw0} this week", 4)]
+    tasks += [lambda: research_duckduckgo(f"site:threads.net {niche} this week", 4)]
     tasks += [lambda: research_duckduckgo(f"{niche} went viral on social media this week", 5)]
 
     with ThreadPoolExecutor(max_workers=12) as ex:
@@ -2040,16 +2040,16 @@ def ra_step5_youtube(state: NicheResearchState) -> dict:
     kw0 = keywords[0] if keywords else niche
     kw1 = keywords[1] if len(keywords) > 1 else niche
 
-    yt_queries = [niche, kw0, f"{kw1} 2025", f"{niche} viral",
+    yt_queries = [niche, kw0, f"{kw1} this week", f"{niche} viral",
                   f"{kw0} secrets revealed", f"{niche} trending video", f"{kw1} most watched"]
 
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
     tasks = [lambda q=q: research_youtube_videos(q, 8, "7d") for q in yt_queries[:6]]
     tasks += [lambda q=q: research_tavily(q, 4) for q in [
-        f"site:youtube.com {niche} viral video 2025",
+        f"site:youtube.com {niche} viral video this week",
         f"most viewed youtube {niche} this month",
-        f"youtube trending {kw0} 2025",
+        f"youtube trending {kw0} this week",
     ]]
 
     with ThreadPoolExecutor(max_workers=10) as ex:
@@ -2093,16 +2093,16 @@ def ra_step6_shortform(state: NicheResearchState) -> dict:
 
     # ── Additional Tavily queries for short-form content ───────────────────────
     shortform_queries = [
-        f"site:tiktok.com {niche} viral 2025",
+        f"site:tiktok.com {niche} viral this week",
         f"tiktok {kw0} viral trend this week",
-        f"tiktok {kw1} millions views 2025",
-        f"instagram reels {niche} viral this week 2025",
+        f"tiktok {kw1} millions views this week",
+        f"instagram reels {niche} viral this week",
         f"{niche} tiktok trend explained this week",
         f"{kw0} short video going viral this week",
-        f"{niche} youtube shorts viral 2025",
-        f"pinterest {niche} trending 2025",
+        f"{niche} youtube shorts viral this week",
+        f"pinterest {niche} trending this week",
         f"{kw1} tiktok sound trending now",
-        f"{niche} snapchat spotlight viral 2025",
+        f"{niche} snapchat spotlight viral this week",
         f"{kw2} reels viral audio trend",
         f"most viral {niche} tiktok this week",
         f"instagram explore page {niche} trending",
@@ -2112,13 +2112,13 @@ def ra_step6_shortform(state: NicheResearchState) -> dict:
 
     # ── DuckDuckGo fallback queries ───────────────────────────────────────────
     ddg_queries = [
-        f"tiktok {niche} viral 2025",
-        f"instagram reels {niche} viral 2025",
+        f"tiktok {niche} viral this week",
+        f"instagram reels {niche} viral this week",
         f"{niche} short form video viral this week",
-        f"youtube shorts {niche} trending 2025",
+        f"youtube shorts {niche} trending this week",
     ]
     for q in ddg_queries:
-        tasks.append(("DDG", lambda q=q: research_duckduckgo(q, 5)))
+        tasks.append(("Tavily", lambda q=q: research_tavily(q, 5)))
 
     with ThreadPoolExecutor(max_workers=14) as ex:
         future_map = {ex.submit(fn): name for name, fn in tasks}
@@ -2144,18 +2144,18 @@ def ra_step7_blogs(state: NicheResearchState) -> dict:
     kw1 = keywords[1] if len(keywords) > 1 else niche
 
     deep_queries = [
-        f"{niche} blog article 2025", f"{kw0} research paper 2025",
+        f"{niche} blog article this week", f"{kw0} research paper this week",
         f"{kw1} academic study new findings", f"{niche} expert opinion article",
-        f"{kw0} substack newsletter viral", f"site:medium.com {niche} 2025",
-        f"{niche} podcast episode trending 2025", f"arxiv {niche} new study",
-        f"{kw0} psychology today article 2025", f"{kw1} ted talk trending 2025",
-        f"{niche} new book viral 2025",
+        f"{kw0} substack newsletter viral", f"site:medium.com {niche} this week",
+        f"{niche} podcast episode trending this week", f"arxiv {niche} new study",
+        f"{kw0} psychology today article this week", f"{kw1} ted talk trending this week",
+        f"{niche} new book viral this week",
     ]
 
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
     tasks = [lambda q=q: research_tavily(q, 4) for q in deep_queries]
-    tasks += [lambda: research_duckduckgo(f"{niche} expert blog 2025", 6)]
+    tasks += [lambda: research_duckduckgo(f"{niche} expert blog this week", 6)]
     tasks += [lambda: research_rss_blogs(keywords[:5], 8)]
 
     with ThreadPoolExecutor(max_workers=12) as ex:
@@ -2181,15 +2181,15 @@ def ra_step8_forums(state: NicheResearchState) -> dict:
     kw1 = keywords[1] if len(keywords) > 1 else niche
 
     community_queries = [
-        f"site:quora.com {niche} 2025",
-        f"quora {kw0} most asked question 2025",
+        f"site:quora.com {niche} this week",
+        f"quora {kw0} most asked question this week",
         f"site:quora.com {kw1} answer viral",
-        f"{niche} forum community discussion 2025",
+        f"{niche} forum community discussion this week",
         f"{kw0} discord server trending topic",
         f"{niche} facebook group viral post",
         f"{kw0} community debate hot topic",
-        f"{niche} stack exchange question 2025",
-        f"people asking about {niche} 2025",
+        f"{niche} stack exchange question this week",
+        f"people asking about {niche} this week",
         f"{kw1} discussion board new post",
     ]
 
