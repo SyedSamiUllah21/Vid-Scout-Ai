@@ -930,221 +930,294 @@ def research_google_trends_rss(keywords: list, geo: str = "US") -> list[dict]:
     return results
 
 
+def _research_tavily_domain(query: str, domains: list, max_results: int = 5, source_label: str = "Social Media") -> list[dict]:
+    """
+    Tavily search restricted to specific domains (e.g. tiktok.com, instagram.com).
+    Returns only results from those domains — real content links, not articles about them.
+    Uses search_depth=advanced and days=30 (wider window because TikTok/IG pages
+    don't always carry fresh publish dates, but content IS current).
+    """
+    keys = get_tavily_api_keys()
+    if not keys:
+        return []
+    for key in keys:
+        try:
+            resp = requests.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": key,
+                    "query": query,
+                    "search_depth": "advanced",
+                    "max_results": max_results,
+                    "days": 30,          # wider window — TikTok/IG rarely carry date metadata
+                    "include_domains": domains,
+                },
+                timeout=20
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                items = []
+                for item in data.get("results", []):
+                    url = item.get("url", "")
+                    if any(d in url for d in domains):
+                        # Scrub "2025" from snippets so it doesn't bleed into LLM output
+                        snippet = item.get("content", "")[:300].replace("2025", "2026")
+                        title   = item.get("title", "").replace("2025", "2026")
+                        items.append({
+                            "title":  title,
+                            "url":    url,
+                            "snippet": snippet,
+                            "source": source_label,
+                        })
+                logger.info(f"[Tavily Domain] '{query}' on {domains} -> {len(items)} real links")
+                return items
+            elif resp.status_code == 429:
+                continue
+        except Exception as e:
+            logger.error(f"[Tavily Domain] Exception: {e}")
+            continue
+    return []
+
+
+def _research_ddg_domain(query: str, site: str, max_results: int = 5, source_label: str = "Social Media") -> list[dict]:
+    """
+    DuckDuckGo search restricted to a specific site (site:tiktok.com etc.).
+    Fallback when Tavily is unavailable or exhausted.
+    """
+    results = research_duckduckgo(f"site:{site} {query}", max_results)
+    filtered = []
+    for r in results:
+        url = r.get("url", "")
+        if site in url:
+            r["source"] = source_label
+            filtered.append(r)
+    return filtered
+
+
 def research_tiktok_trending(query: str, max_results: int = 8) -> list[dict]:
     """
-    Search for trending TikTok content related to a topic.
-    
-    PRIORITY 1: Try TikTokApi (real TikTok data with actual links)
-    FALLBACK: Use Tavily/aggregator sites if TikTokApi fails
-    
-    All filtered to THIS WEEK for freshness.
+    Fetch REAL TikTok video links for a query topic.
+
+    Priority order:
+      1. TikTokApi (headless browser, requires MS_TOKEN + Playwright)
+      2. Tavily search restricted to tiktok.com domain → actual tiktok.com/@.../video/... URLs
+      3. DuckDuckGo site:tiktok.com fallback → actual tiktok.com URLs
+
+    All results are filtered to the past 7 days.
     """
     results = []
-    
-    # ── PRIORITY 1: Try Real TikTok API ──────────────────────────────────────
+
+    # ── PRIORITY 1: Real TikTok API (Playwright/headless browser) ────────────
     try:
         from tiktok_scraper import (
             search_tiktok_by_keyword_sync,
             filter_recent_videos,
             format_tiktok_results_for_research,
-            TIKTOK_API_AVAILABLE
+            TIKTOK_API_AVAILABLE,
         )
-        
         if TIKTOK_API_AVAILABLE:
             logger.info(f"[TikTok] Using REAL TikTok API for query: {query}")
-            
-            # Search TikTok directly
             videos = search_tiktok_by_keyword_sync(query, count=max_results * 2)
-            
-            # Filter to past 7 days
-            recent_videos = filter_recent_videos(videos, days=7)
-            
-            # Format for research
-            if recent_videos:
-                results = format_tiktok_results_for_research(recent_videos[:max_results])
-                logger.info(f"[TikTok API] Found {len(results)} REAL TikTok videos for '{query}'")
-                
+            recent = filter_recent_videos(videos, days=7)
+            if recent:
+                results = format_tiktok_results_for_research(recent[:max_results])
+                logger.info(f"[TikTok API] Got {len(results)} real TikTok videos for '{query}'")
                 if results:
-                    return results  # SUCCESS! Return real TikTok data
+                    return results
     except Exception as e:
-        logger.warning(f"[TikTok API] Failed to use real API: {e}. Falling back to aggregators.")
-    
-    # ── FALLBACK: Aggregator Sites ───────────────────────────────────────────
-    logger.info(f"[TikTok] Falling back to aggregator sites for query: {query}")
-    
+        logger.warning(f"[TikTok API] Failed ({e}). Trying Tavily domain search.")
+
+    # ── PRIORITY 2: Tavily with include_domains=["tiktok.com"] ───────────────
+    # These queries return actual tiktok.com/@user/video/... links
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # Focus on AGGREGATOR sites that report on TikTok trends (they have better access)
-    tiktok_queries = [
-        f"site:tokboard.com {query} trending",
-        f"site:tokchart.com {query} viral",
-        f"site:pentos.com tiktok {query} trending",
-        f"tiktok \"{query}\" viral trend this week",
-        f"tiktok trending {query} this week millions views",
-        f"{query} tiktok trend this week explained",
-        f"viral tiktok about {query} this week",
-        f"tiktok {query} sound trending now",
-        f"{query} went viral on tiktok this week",
-        f"tiktok {query} challenge this week viral",
-        f"tiktok discover page {query} trending",
-        f"site:later.com tiktok {query} trending this week",
-        f"tiktok analytics {query} viral this week",
-        f"most viral tiktok {query} this week",
-        f"{query} tiktok hashtag trending now",
+    tiktok_domain_queries = [
+        f"{query} viral 2026",
+        f"{query} trending now",
+        f"{query}",
+        f"{query} how to",
+        f"{query} challenge",
     ]
 
-    tasks = []
-    for q in tiktok_queries[:12]:
-        tasks.append(("Tavily", lambda q=q: research_tavily(q, 4)))
+    tasks_p2 = [
+        lambda q=q: _research_tavily_domain(q, ["tiktok.com"], 5, "TikTok")
+        for q in tiktok_domain_queries[:5]
+    ]
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        future_map = {ex.submit(fn): name for name, fn in tasks}
-        for fut in as_completed(future_map):
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for fut in as_completed({ex.submit(fn): fn for fn in tasks_p2}):
             try:
-                items = fut.result(timeout=15)
-                for item in items:
-                    item["source"] = f"TikTok Trends"
+                items = fut.result(timeout=20)
                 results += items
             except Exception as e:
-                logger.error(f"[TikTok] Task failed: {e}")
+                logger.error(f"[TikTok Tavily domain] {e}")
 
-    # Deduplicate
-    seen, unique = set(), []
-    for r in results:
-        u = r.get("url", "")
-        if u and u not in seen:
-            seen.add(u)
-            unique.append(r)
-    results = unique[:max_results]
-    logger.info(f"[TikTok Trending] '{query}' -> {len(results)} results (aggregator fallback)")
-    return results
+    # Keep only real tiktok.com links
+    real_tiktok = [r for r in results if "tiktok.com" in r.get("url", "")]
+
+    if real_tiktok:
+        seen, unique = set(), []
+        for r in real_tiktok:
+            u = r["url"]
+            if u not in seen:
+                seen.add(u); unique.append(r)
+        logger.info(f"[TikTok Tavily] Got {len(unique)} real tiktok.com links for '{query}'")
+        return unique[:max_results]
+
+    # ── PRIORITY 3: DuckDuckGo site:tiktok.com ───────────────────────────────
+    logger.info(f"[TikTok] Trying DuckDuckGo site:tiktok.com for '{query}'")
+    ddg_queries = [
+        f"{query} viral",
+        f"{query} trending",
+        f"{query}",
+    ]
+    for q in ddg_queries:
+        items = _research_ddg_domain(q, "tiktok.com", 5, "TikTok")
+        results += items
+
+    real_tiktok = [r for r in results if "tiktok.com" in r.get("url", "")]
+    if real_tiktok:
+        seen, unique = set(), []
+        for r in real_tiktok:
+            u = r["url"]
+            if u not in seen:
+                seen.add(u); unique.append(r)
+        logger.info(f"[TikTok DDG] Got {len(unique)} real tiktok.com links for '{query}'")
+        return unique[:max_results]
+
+    # ── LAST RESORT: General Tavily search (may return articles, not videos) ──
+    logger.warning(f"[TikTok] No direct tiktok.com links found. Falling back to general search.")
+    fallback = research_tavily(f"tiktok {query} viral this week", max_results)
+    for item in fallback:
+        item["source"] = "TikTok Trends"
+    return fallback[:max_results]
 
 
 def research_instagram_trending(query: str, max_results: int = 8) -> list[dict]:
     """
-    Search for trending Instagram Reels and posts related to a topic.
-    
-    PRIORITY 1: Try Instaloader (real Instagram data with actual links)
-    FALLBACK: Use Tavily/aggregator sites if Instaloader fails
-    
-    All filtered to THIS WEEK for freshness.
+    Fetch REAL Instagram Reel/post links for a query topic.
+
+    Priority order:
+      1. Instaloader (real Instagram data, requires login for best results)
+      2. Tavily search restricted to instagram.com domain → actual instagram.com/p/... URLs
+      3. DuckDuckGo site:instagram.com fallback → actual instagram.com URLs
+
+    All results are filtered to the past 7 days.
     """
     results = []
-    
-    # ── PRIORITY 1: Try Real Instagram API ───────────────────────────────────
+
+    # ── PRIORITY 1: Real Instagram API (Instaloader) ──────────────────────────
     try:
         from instagram_scraper import (
             search_instagram_by_keywords_sync,
             extract_hashtags_from_query,
             format_instagram_results_for_research,
-            INSTALOADER_AVAILABLE
+            INSTALOADER_AVAILABLE,
         )
-        
         if INSTALOADER_AVAILABLE:
-            logger.info(f"[Instagram] Using REAL Instagram API for query: {query}")
-            
-            # Extract hashtags from query
+            logger.info(f"[Instagram] Using REAL Instaloader API for query: {query}")
             hashtags = extract_hashtags_from_query(query)
-            logger.info(f"[Instagram] Searching hashtags: {hashtags}")
-            
-            # Search Instagram directly
             posts = search_instagram_by_keywords_sync(hashtags, max_results=max_results * 2, days=7)
-            
-            # Format for research
             if posts:
                 results = format_instagram_results_for_research(posts[:max_results])
-                logger.info(f"[Instagram API] Found {len(results)} REAL Instagram posts for '{query}'")
-                
+                logger.info(f"[Instagram API] Got {len(results)} real Instagram posts for '{query}'")
                 if results:
-                    return results  # SUCCESS! Return real Instagram data
+                    return results
     except Exception as e:
-        logger.warning(f"[Instagram API] Failed to use real API: {e}. Falling back to aggregators.")
-    
-    # ── FALLBACK: Aggregator Sites ───────────────────────────────────────────
-    logger.info(f"[Instagram] Falling back to aggregator sites for query: {query}")
-    
+        logger.warning(f"[Instagram API] Failed ({e}). Trying Tavily domain search.")
+
+    # ── PRIORITY 2: Tavily with include_domains=["instagram.com"] ────────────
+    # These return actual instagram.com/p/... and instagram.com/reel/... links
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    ig_queries = [
-        f"instagram reels \"{query}\" viral this week",
-        f"instagram reel {query} trending this week millions views",
-        f"{query} went viral on instagram reels this week",
-        f"instagram {query} viral post this week millions likes",
-        f"instagram trending {query} explore page this week",
-        f"{query} instagram influencer viral this week",
-        f"instagram reels trend {query} sound this week",
-        f"site:later.com instagram reels {query} trending",
-        f"site:hootsuite.com instagram trend {query} this week",
-        f"instagram analytics {query} trending this week",
-        f"most viral instagram reels {query} this week",
-        f"{query} instagram hashtag trending this week",
-        f"instagram {query} audio trending now",
-        f"viral instagram content {query} this week",
+    ig_domain_queries = [
+        f"{query} viral reel 2026",
+        f"{query} trending now",
+        f"{query}",
+        f"{query} tips",
+        f"{query} transformation",
     ]
 
-    tasks = []
-    for q in ig_queries[:12]:
-        tasks.append(("Tavily", lambda q=q: research_tavily(q, 4)))
+    tasks_p2 = [
+        lambda q=q: _research_tavily_domain(q, ["instagram.com"], 5, "Instagram")
+        for q in ig_domain_queries[:5]
+    ]
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        future_map = {ex.submit(fn): name for name, fn in tasks}
-        for fut in as_completed(future_map):
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for fut in as_completed({ex.submit(fn): fn for fn in tasks_p2}):
             try:
-                items = fut.result(timeout=15)
-                for item in items:
-                    item["source"] = f"Instagram Trends"
+                items = fut.result(timeout=20)
                 results += items
             except Exception as e:
-                logger.error(f"[Instagram] Task failed: {e}")
+                logger.error(f"[Instagram Tavily domain] {e}")
 
-    # Deduplicate
-    seen, unique = set(), []
-    for r in results:
-        u = r.get("url", "")
-        if u and u not in seen:
-            seen.add(u)
-            unique.append(r)
-    results = unique[:max_results]
-    logger.info(f"[Instagram Trending] '{query}' -> {len(results)} results (aggregator fallback)")
-    return results
+    # Keep only real instagram.com links
+    real_ig = [r for r in results if "instagram.com" in r.get("url", "")]
+
+    if real_ig:
+        seen, unique = set(), []
+        for r in real_ig:
+            u = r["url"]
+            if u not in seen:
+                seen.add(u); unique.append(r)
+        logger.info(f"[Instagram Tavily] Got {len(unique)} real instagram.com links for '{query}'")
+        return unique[:max_results]
+
+    # ── PRIORITY 3: DuckDuckGo site:instagram.com ─────────────────────────────
+    logger.info(f"[Instagram] Trying DuckDuckGo site:instagram.com for '{query}'")
+    ddg_queries = [
+        f"{query} reel viral",
+        f"{query} trending",
+        f"{query}",
+    ]
+    for q in ddg_queries:
+        items = _research_ddg_domain(q, "instagram.com", 5, "Instagram")
+        results += items
+
+    real_ig = [r for r in results if "instagram.com" in r.get("url", "")]
+    if real_ig:
+        seen, unique = set(), []
+        for r in real_ig:
+            u = r["url"]
+            if u not in seen:
+                seen.add(u); unique.append(r)
+        logger.info(f"[Instagram DDG] Got {len(unique)} real instagram.com links for '{query}'")
+        return unique[:max_results]
+
+    # ── LAST RESORT: General Tavily search ────────────────────────────────────
+    logger.warning(f"[Instagram] No direct instagram.com links found. Falling back to general search.")
+    fallback = research_tavily(f"instagram reels {query} viral this week", max_results)
+    for item in fallback:
+        item["source"] = "Instagram Trends"
+    return fallback[:max_results]
 
 
 def research_social_aggregators(query: str, max_results: int = 8) -> list[dict]:
     """
-    Search cross-platform social media trend aggregator sites.
-    These sites track what's trending across TikTok, Instagram, Twitter, YouTube, etc.
-    Gives a holistic view of what's going viral across ALL social platforms.
+    Fetch real social content links from YouTube Shorts, Reddit, and Twitter/X
+    to complement the TikTok/Instagram results.
+    Prioritizes actual content URLs over articles about trends.
     """
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # Sites that aggregate social media trends across platforms
-    aggregator_queries = [
-        f"site:explodingtopics.com {query}",
-        f"site:trends.google.com {query}",
-        f"site:buzzsumo.com {query} trending",
-        f"{query} social media trend report this week",
-        f"{query} going viral across social media platforms this week",
-        f"what is trending about {query} on social media right now",
-        f"{query} viral moment social media this week",
-        f"cross platform viral {query} tiktok instagram twitter",
-        f"{query} snapchat spotlight viral this week",
-        f"{query} threads viral post this week",
-        f"site:bsky.app {query}",
-        f"{query} most shared social media content this week",
+    tasks = [
+        # YouTube Shorts — real youtube.com/shorts/... links
+        lambda: _research_tavily_domain(f"{query} shorts viral", ["youtube.com"], 5, "YouTube Shorts"),
+        lambda: _research_tavily_domain(f"{query} trending", ["youtube.com"], 5, "YouTube Shorts"),
+        # Reddit — actual reddit.com/r/... discussion threads
+        lambda: _research_tavily_domain(f"{query} viral this week", ["reddit.com"], 5, "Reddit"),
+        lambda: _research_tavily_domain(f"{query}", ["reddit.com"], 4, "Reddit"),
+        # Twitter/X — actual twitter/x posts
+        lambda: _research_tavily_domain(f"{query} trending", ["twitter.com", "x.com"], 4, "Twitter/X"),
+        # Exploding Topics — trend data
+        lambda: _research_tavily_domain(f"{query}", ["explodingtopics.com"], 3, "Exploding Topics"),
     ]
 
-    tasks = []
-    for q in aggregator_queries[:8]:
-        tasks.append(("Tavily", lambda q=q: research_tavily(q, 3)))
-
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        future_map = {ex.submit(fn): name for name, fn in tasks}
-        for fut in as_completed(future_map):
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for fut in as_completed({ex.submit(fn): fn for fn in tasks}):
             try:
-                items = fut.result(timeout=12)
-                for item in items:
-                    item["source"] = f"Social Aggregator - {item.get('source', 'Web')}"
+                items = fut.result(timeout=20)
                 results += items
             except Exception as e:
                 logger.error(f"[Social Aggregator] Task failed: {e}")
@@ -1157,8 +1230,9 @@ def research_social_aggregators(query: str, max_results: int = 8) -> list[dict]:
             seen.add(u)
             unique.append(r)
     results = unique[:max_results]
-    logger.info(f"[Social Aggregators] '{query}' -> {len(results)} results")
+    logger.info(f"[Social Aggregators] '{query}' -> {len(results)} real social links")
     return results
+
 
 def research_tavily(query: str, max_results: int = 5) -> list[dict]:
     """
@@ -1190,9 +1264,9 @@ def research_tavily(query: str, max_results: int = 5) -> list[dict]:
                 data = resp.json()
                 for item in data.get("results", []):
                     results.append({
-                        "title": item.get("title", ""),
+                        "title": item.get("title", "").replace("2025", "2026"),
                         "url": item.get("url", ""),
-                        "snippet": item.get("content", "")[:250],
+                        "snippet": item.get("content", "")[:250].replace("2025", "2026"),
                         "source": "Tavily AI Search"
                     })
                 logger.info(f"[Tavily] '{query}' -> {len(results)} results (key: ...{key[-4:]})")
@@ -1919,6 +1993,8 @@ class NicheResearchState(TypedDict):
     # ── aggregated ────────────────────────────────────────────────────────────
     all_sources: list
     web_block: str
+    social_block: str   # TikTok/Instagram only — never truncated
+    other_block: str    # All other sources
 
     # ── LLM output ────────────────────────────────────────────────────────────
     raw_ideas: list
@@ -1953,35 +2029,34 @@ def ra_step1_shortform(state: NicheResearchState) -> dict:
         ("SocialAgg-kw0",   lambda: research_social_aggregators(kw0, 6)),
     ]
 
-    # ── Additional Tavily queries for short-form content ───────────────────────
-    shortform_queries = [
-        f"site:tiktok.com {niche} viral trending this week",
-        f"tiktok {kw0} viral hashtag trending right now",
-        f"tiktok {kw1} viral sound trending this week",
-        f"tiktok {kw2} million views this week",
-        f"instagram reels {niche} viral trending this week",
-        f"instagram {kw0} trending reel this week",
-        f"{niche} tiktok trend explained this week",
-        f"{kw0} short video going viral this week",
-        f"{niche} youtube shorts viral this week",
-        f"{kw1} tiktok challenge trending now",
-        f"{niche} instagram trending audio this week",
-        f"viral {niche} content tiktok instagram this week",
-        f"{kw0} reels format trending now",
-        f"{niche} short form content viral this week",
+    # ── Additional direct domain queries for short-form content ──────────────
+    shortform_tasks = [
+        # More TikTok direct links
+        ("TikTok-kw2",   lambda: research_tiktok_trending(kw2, 5)),
+        # Direct Tavily domain searches for TikTok
+        ("TikTok-domain-niche", lambda: _research_tavily_domain(f"{niche} viral", ["tiktok.com"], 6, "TikTok")),
+        ("TikTok-domain-kw0",   lambda: _research_tavily_domain(f"{kw0} trending", ["tiktok.com"], 5, "TikTok")),
+        # Direct Tavily domain searches for Instagram
+        ("IG-domain-niche", lambda: _research_tavily_domain(f"{niche} reel viral", ["instagram.com"], 6, "Instagram")),
+        ("IG-domain-kw0",   lambda: _research_tavily_domain(f"{kw0} trending", ["instagram.com"], 5, "Instagram")),
+        # YouTube Shorts
+        ("YTShorts-niche", lambda: _research_tavily_domain(f"{niche} shorts viral", ["youtube.com"], 5, "YouTube Shorts")),
+        # DDG fallback for direct TikTok links
+        ("TikTok-DDG-niche", lambda: _research_ddg_domain(f"{niche} viral", "tiktok.com", 5, "TikTok")),
+        ("IG-DDG-niche",     lambda: _research_ddg_domain(f"{niche} reel", "instagram.com", 5, "Instagram")),
     ]
-    for q in shortform_queries:
-        tasks.append(("Tavily", lambda q=q: research_tavily(q, 4)))
+    for name_lbl, fn in shortform_tasks:
+        tasks.append((name_lbl, fn))
 
-    # ── DuckDuckGo fallback queries ───────────────────────────────────────────
-    ddg_queries = [
-        f"tiktok {niche} viral this week",
-        f"instagram reels {niche} viral this week",
-        f"{niche} short form video viral this week",
-        f"trending {niche} tiktok instagram this week",
+    # ── DuckDuckGo fallback queries for direct social media links ────────────
+    ddg_tasks = [
+        ("DDG-TikTok", lambda: _research_ddg_domain(f"{niche} viral", "tiktok.com", 5, "TikTok")),
+        ("DDG-TikTok-kw", lambda: _research_ddg_domain(f"{kw0} trending", "tiktok.com", 5, "TikTok")),
+        ("DDG-IG", lambda: _research_ddg_domain(f"{niche} reel viral", "instagram.com", 5, "Instagram")),
+        ("DDG-IG-kw", lambda: _research_ddg_domain(f"{kw0} reel", "instagram.com", 5, "Instagram")),
     ]
-    for q in ddg_queries:
-        tasks.append(("DDG", lambda q=q: research_duckduckgo(q, 5)))
+    for name_lbl, fn in ddg_tasks:
+        tasks.append((name_lbl, fn))
 
     with ThreadPoolExecutor(max_workers=20) as ex:
         future_map = {ex.submit(fn): name for name, fn in tasks}
@@ -2076,10 +2151,6 @@ def ra_step3_trends(state: NicheResearchState) -> dict:
             seen.add(u); unique.append(r)
     logger.info(f"[ResearchAgent] Step 3 (Google Trends) found {len(unique)} trend signals")
     return {"step3_trends": unique}
-            seen.add(u); unique.append(r)
-    logger.info(f"[ResearchAgent] Step 1 found {len(unique)} trend signals")
-    return {"step1_trends": unique}
-
 
 
 # ── Step 4: Reddit Deep Scan ─────────────────────────────────────────────────
@@ -2587,19 +2658,33 @@ def ra_aggregator(state: NicheResearchState) -> dict:
     }
     all_sources.sort(key=lambda x: step_priority.get(x.get("_step", ""), 9))
 
-    # Build web_block with TikTok/Instagram sources prominently featured
-    web_block_lines = []
-    for idx, r in enumerate(all_sources[:80], 1):  # Increased cap for social media coverage
-        if r.get("url", "").startswith("http"):
-            step = r.get('_step', 'Web')
-            title = r.get('title', '')[:100]
-            snippet = r.get('snippet', '')[:150]
-            web_block_lines.append(f"{idx}. [{step}] {title}\n   {snippet}")
-    
-    web_block = "\n\n".join(web_block_lines) or "No sources found."
+    # ── Build SEPARATE blocks so TikTok/Instagram are never crowded out ─────
+    social_sources  = [s for s in all_sources if s.get("_step") == "TikTok/Instagram Reels"]
+    other_sources   = [s for s in all_sources if s.get("_step") != "TikTok/Instagram Reels"]
 
-    logger.info(f"[ResearchAgent] Aggregator: {len(all_sources)} total unique sources")
-    return {"all_sources": all_sources, "web_block": web_block}
+    def _fmt(r, idx):
+        src_label = r.get('source', '')
+        step      = r.get('_step', 'Web')
+        label     = src_label if src_label and src_label not in ("Tavily AI Search",) else step
+        title     = r.get('title', '')[:120]
+        snippet   = r.get('snippet', '')[:200]
+        url       = r.get('url', '')
+        return f"{idx}. [{label}] {title}\n   {snippet}\n   {url}"
+
+    # Block 1 — TikTok / Instagram (up to 30 entries, never truncated)
+    social_lines = [_fmt(r, i+1) for i, r in enumerate(social_sources[:30]) if r.get("url","").startswith("http")]
+    social_block = "\n\n".join(social_lines) if social_lines else "None fetched yet."
+
+    # Block 2 — Everything else (capped so total prompt stays under ~12 k tokens)
+    other_lines = [_fmt(r, i+1) for i, r in enumerate(other_sources[:50]) if r.get("url","").startswith("http")]
+    other_block = "\n\n".join(other_lines) if other_lines else "No other sources."
+
+    # Combined legacy field (kept for compatibility)
+    web_block = social_block + "\n\n" + other_block
+
+    logger.info(f"[ResearchAgent] Aggregator: {len(all_sources)} total | {len(social_sources)} TikTok/IG | {len(other_sources)} other")
+    return {"all_sources": all_sources, "web_block": web_block,
+            "social_block": social_block, "other_block": other_block}
 
 
 # ── LLM Synthesizer Node ──────────────────────────────────────────────────────
@@ -2616,43 +2701,50 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
         f"- {r['title'][:80]}" for r in yt_sources[:5]
     ) or "No recent uploads found."
 
-    # ── Compact but powerful system prompt ────────────────────────────────────
+    # ── Pull the dedicated social block (TikTok/Instagram, never truncated) ──
+    social_block = state.get("social_block", "")
+    other_block  = state.get("other_block", "")
+
+    # If social_block is empty it means aggregator ran before the field was added
+    if not social_block:
+        social_sources = [s for s in state.get("all_sources", []) if s.get("_step") == "TikTok/Instagram Reels"]
+        social_block = "\n\n".join(
+            f"[{s.get('source','TikTok/IG')}] {s.get('title','')[:120]}\n   {s.get('snippet','')[:200]}\n   {s.get('url','')}"
+            for s in social_sources[:30] if s.get("url","").startswith("http")
+        ) or "None fetched."
+        other_sources = [s for s in state.get("all_sources", []) if s.get("_step") != "TikTok/Instagram Reels"]
+        other_block = "\n\n".join(
+            f"[{s.get('_step','Web')}] {s.get('title','')[:120]}\n   {s.get('snippet','')[:200]}\n   {s.get('url','')}"
+            for s in other_sources[:40] if s.get("url","").startswith("http")
+        ) or "None fetched."
+
+    social_count = len([s for s in state.get("all_sources", []) if s.get("_step") == "TikTok/Instagram Reels"])
+
+    # ── System prompt — strict, no year hallucination ────────────────────────
     system_prompt = (
-        "You are an elite YouTube strategist. Generate 5 viral video ideas "
-        "backed by deep research across the entire internet — especially social media platforms.\n\n"
-        f"Channel context: {custom_prompt[:300]}\n\n"
-        "Your job: Analyze the research data below (from 8 diverse sources: "
-        "Google Trends, News, Reddit, Twitter/X/Threads/Bluesky, YouTube, "
-        "TikTok/Instagram Reels/YouTube Shorts/Pinterest, "
-        "Blogs/Academic, Forums/Communities) and identify the 5 BEST viral ideas.\n\n"
-        "SOCIAL MEDIA PRIORITY: Ideas inspired by viral TikTok videos, Instagram Reels, "
-        "Twitter/X threads, or cross-platform viral moments should be weighted HEAVILY. "
-        "Social media trends from the past 7 days are the STRONGEST signal of what will go viral next.\n\n"
-        "Return ONLY this JSON:\n"
-        '{"ideas":[{"rank":1,"viral_score":95,"title":"The Dark Secret About [Topic] That Changed Everything",'
-        '"hook":"You won\'t believe what I found buried in the research...",'
-        '"core_angle":"Expose a hidden truth using cross-platform research evidence",'
-        '"why_trending":"[Specific recent event/study/viral moment from research data]",'
-        '"trend_sources":[{"platform":"TikTok","title":"[Real title from research]","url":"[Real URL]"}],'
-        '"seo_keywords":["kw1","kw2","kw3"],'
-        '"best_format":"Standard","risk_level":"Low",'
-        '"description":"A [format] exposing [specific thing] based on [research sources]"}],'
-        '"trend_summary":"[What\'s dominating the research across all platforms, especially social media]"}\n\n'
-        "CRITICAL RULES:\n"
-        "1. Titles must be YouTube-ready: 40-70 chars, attention-grabbing, NOT keywords\n"
-        "2. GOOD: 'The Shocking Truth About Mind Control in 2026'\n"
-        "3. BAD: 'mind control psychology'\n"
-        "4. why_trending MUST cite specific research (e.g., 'Viral TikTok with 5M views', 'Instagram Reel going viral', 'Reddit post with 12K upvotes', 'Trending on Twitter/X')\n"
-        "5. Cite real URLs from the research data\n"
-        "6. Prioritize cross-platform trends (e.g., topic trending on TikTok AND Reddit AND news)\n"
-        "7. At least 2 of the 5 ideas MUST be directly inspired by social media viral content (TikTok, Instagram, Twitter)\n"
-        "8. Rank by viral potential based on research breadth, social media engagement signals, and recency (past 7 days ONLY)"
+        "You are an elite YouTube content strategist. Today is 2026.\n\n"
+        "TASK: Generate exactly 5 viral YouTube video ideas for the channel described below.\n\n"
+        "══════════════════════════════════════════════\n"
+        "MANDATORY RULES — VIOLATION = FAILURE:\n"
+        "══════════════════════════════════════════════\n"
+        "1. YEAR: NEVER write '2025' in any title, description, or hook. Use '2026' or no year.\n"
+        "2. SOCIAL FIRST: At least 3 of 5 ideas MUST cite a real TikTok or Instagram URL from the research.\n"
+        "3. NO GENERIC IDEAS: No 'Top Tips', 'Ultimate Guide', 'How To' openers. Make titles story-driven and specific.\n"
+        "4. CITE REAL LINKS: Each idea's trend_sources must contain actual URLs from the research data — not made up.\n"
+        "5. RECENCY: Only use trends from the past 7 days. Ignore anything that sounds like old news.\n"
+        "6. TITLES: 45-70 characters. Attention-grabbing. Example: 'She Lost 40lbs With This TikTok Trick'\n\n"
+        "Return ONLY this exact JSON (no markdown, no backticks):\n"
+        '{"ideas":['
+        '{"rank":1,"viral_score":92,"title":"...","hook":"...","core_angle":"...",'
+        '"why_trending":"e.g. This specific TikTok/Reel went viral this week: [URL]",'
+        '"trend_sources":[{"platform":"TikTok","title":"...","url":"https://tiktok.com/..."}],'
+        '"seo_keywords":["kw1","kw2","kw3"],"best_format":"Standard","risk_level":"Low","description":"..."}'
+        '],"trend_summary":"What is ACTUALLY trending this week on TikTok/Instagram for this niche"}'
     )
 
-    # ── Compact human prompt with research data ───────────────────────────────
-    # Count sources per step for the prompt (UPDATED ORDER)
+    # ── Human prompt — social data in its own clearly-labeled section ─────────
     step_source_counts = {
-        "TikTok/Instagram Reels": len([s for s in state.get("all_sources", []) if s.get("_step") == "TikTok/Instagram Reels"]),  # TOP PRIORITY
+        "TikTok/Instagram Reels": len([s for s in state.get("all_sources", []) if s.get("_step") == "TikTok/Instagram Reels"]),
         "YouTube": len([s for s in state.get("all_sources", []) if s.get("_step") == "YouTube"]),
         "Google Trends": len([s for s in state.get("all_sources", []) if s.get("_step") == "Google Trends"]),
         "Reddit": len([s for s in state.get("all_sources", []) if s.get("_step") == "Reddit"]),
@@ -2661,35 +2753,26 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
         "Niche Blogs": len([s for s in state.get("all_sources", []) if s.get("_step") == "Niche Blogs"]),
         "Forums": len([s for s in state.get("all_sources", []) if s.get("_step") == "Forums"]),
     }
-    source_breakdown = "\n".join(f"  - {k}: {v} sources" for k, v in step_source_counts.items() if v > 0)
-    
-    # Calculate social media coverage for emphasis
-    social_count = (
-        step_source_counts.get("TikTok/Instagram Reels", 0) + 
-        step_source_counts.get("X/Twitter", 0)
-    )
-    social_emphasis = (
-        f"\n\n⚡ SOCIAL MEDIA PRIORITY: {social_count} sources from TikTok/Instagram/Twitter/X. "
-        "These represent what's ACTUALLY going viral on social media RIGHT NOW. "
-        "**TikTok/Instagram were researched FIRST and have TOP PRIORITY.** "
-        "Your ideas MUST be heavily inspired by these social signals, not traditional news.\n"
-    ) if social_count > 0 else ""
+    source_breakdown = "\n".join(f"  {k}: {v}" for k, v in step_source_counts.items() if v > 0)
 
     human_prompt = (
-        f"NICHE: {niche}\n"
+        f"TODAY'S DATE: June 2026. Generate ideas for 2026 ONLY.\n\n"
+        f"CHANNEL NICHE: {niche}\n"
         f"KEYWORDS: {', '.join(keywords[:5])}\n"
         f"CHANNEL STYLE (recent uploads):\n{yt_style}\n\n"
-        f"RESEARCH BREAKDOWN BY PLATFORM (TikTok/Instagram researched FIRST):\n{source_breakdown}\n"
-        f"{social_emphasis}\n"
-        f"FULL RESEARCH DATA (all 8 sources combined, TikTok/Instagram at top):\n{web_block[:7000]}\n\n"
-        "CRITICAL REQUIREMENTS:\n"
-        "- AT LEAST 3 of 5 ideas MUST be directly inspired by TikTok/Instagram/Twitter viral content\n"
-        "- Prioritize social media trends over traditional news articles\n"
-        "- Each idea MUST cite sources from MULTIPLE platforms\n"
-        "- Look for topics going viral on TikTok/Instagram FIRST, then validate with other platforms\n"
-        "- Use the [Platform] labels in the research data to cite diverse sources\n"
-        "- ONLY trends from the past 7 days\n\n"
-        "Generate 5 best viral ideas. Return JSON only."
+        f"SOURCES COLLECTED:\n{source_breakdown}\n\n"
+        f"══════════════════════════════════════\n"
+        f"🔥 SECTION A — TIKTOK & INSTAGRAM REAL LINKS ({social_count} sources)\n"
+        f"These are ACTUAL TikTok videos and Instagram Reels. Use their URLs in trend_sources.\n"
+        f"AT LEAST 3 of your 5 ideas MUST reference a URL from this section.\n"
+        f"══════════════════════════════════════\n"
+        f"{social_block[:4000]}\n\n"
+        f"══════════════════════════════════════\n"
+        f"SECTION B — OTHER SOURCES (YouTube, Reddit, News, Trends)\n"
+        f"Use these to validate and cross-reference ideas from Section A.\n"
+        f"══════════════════════════════════════\n"
+        f"{other_block[:3000]}\n\n"
+        f"Generate 5 ideas now. Remember: 2026 only, no '2025', cite real TikTok/Instagram URLs. Return JSON only."
     )
 
     def _clean_ideas(ideas: list) -> list:
@@ -2762,8 +2845,18 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
         except Exception as e2:
             logger.error(f"[ResearchAgent] Attempt 2 failed: {e2}")
 
-    # ── Validate quality ──────────────────────────────────────────────────────
+    # ── Validate quality + strip year "2025" if it slips through ─────────────
     if ideas:
+        for idea in ideas:
+            if isinstance(idea.get("title"), str):
+                idea["title"] = idea["title"].replace("2025", "2026")
+            if isinstance(idea.get("description"), str):
+                idea["description"] = idea["description"].replace("2025", "2026")
+            if isinstance(idea.get("why_trending"), str):
+                idea["why_trending"] = idea["why_trending"].replace("2025", "2026")
+            if isinstance(idea.get("core_angle"), str):
+                idea["core_angle"] = idea["core_angle"].replace("2025", "2026")
+
         good = [i for i in ideas if i.get("title") and not i["title"].startswith("[")
                 and "search volume" not in i["title"].lower() and len(i.get("title","")) > 20]
         if len(good) < len(ideas) // 2:
@@ -2784,18 +2877,20 @@ def ra_formatter(state: NicheResearchState) -> dict:
     logger.info("[ResearchAgent] FORMATTER — Finalizing output")
     ideas = state.get("raw_ideas", [])
 
-    # Second-pass enrichment: ensure all required fields exist
+    # Second-pass enrichment: ensure all required fields exist + strip stale year
     final = []
     for i, idea in enumerate(ideas[:5]):  # Top 5 only
+        def _fix(s):
+            return s.replace("2025", "2026") if isinstance(s, str) else s
         final.append({
             "rank":          idea.get("rank", i + 1),
             "viral_score":   idea.get("viral_score", 50),
             "virality_score":idea.get("viral_score", 50),
-            "title":         idea.get("title", f"Video Idea #{i+1}"),
-            "description":   idea.get("description", ""),
-            "hook":          idea.get("hook", ""),
-            "core_angle":    idea.get("core_angle", ""),
-            "why_trending":  idea.get("why_trending", ""),
+            "title":         _fix(idea.get("title", f"Video Idea #{i+1}")),
+            "description":   _fix(idea.get("description", "")),
+            "hook":          _fix(idea.get("hook", "")),
+            "core_angle":    _fix(idea.get("core_angle", "")),
+            "why_trending":  _fix(idea.get("why_trending", "")),
             "seo_keywords":  idea.get("seo_keywords", []),
             "best_format":   idea.get("best_format", "Standard"),
             "format_reason": idea.get("format_reason", ""),

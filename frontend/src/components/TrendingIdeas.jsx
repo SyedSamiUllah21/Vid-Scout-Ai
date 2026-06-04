@@ -148,27 +148,32 @@ const TrendingIdeas = () => {
                     </div>
                     {sources.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {sources.map((src, i) => (
-                          <a key={i} href={src.url || '#'} target="_blank" rel="noopener noreferrer"
-                            style={{
-                              display: 'block',
-                              padding: '8px 12px',
-                              background: 'rgba(255,255,255,0.03)',
-                              borderRadius: '6px',
-                              border: '1px solid rgba(255,255,255,0.08)',
-                              textDecoration: 'none',
-                              transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.background='rgba(168,85,247,0.1)'; e.currentTarget.style.borderColor='rgba(168,85,247,0.3)'; }}
-                            onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.08)'; }}
-                          >
-                            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#fff', marginBottom: '2px' }}>{src.title}</div>
-                            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)' }}>
-                              {src.source} {src.date && `· ${src.date}`} {src.engagement && `· ${src.engagement}`}
-                            </div>
-                            {src.snippet && <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginTop: '4px', lineHeight: '1.4' }}>{src.snippet.substring(0, 150)}{src.snippet.length > 150 ? '...' : ''}</div>}
-                          </a>
-                        ))}
+                        {sources.map((src, i) => {
+                          const u = src.url || '';
+                          const isTT = u.includes('tiktok.com');
+                          const isIG = u.includes('instagram.com');
+                          const bgColor = isTT ? 'rgba(254,44,85,0.06)' : isIG ? 'rgba(225,48,108,0.06)' : 'rgba(255,255,255,0.03)';
+                          const bdColor = isTT ? 'rgba(254,44,85,0.2)' : isIG ? 'rgba(225,48,108,0.2)' : 'rgba(255,255,255,0.08)';
+                          const srcColor = isTT ? '#fe2c55' : isIG ? '#e1306c' : color;
+                          return (
+                            <a key={i} href={u || '#'} target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'block', padding: '8px 12px', background: bgColor, borderRadius: '6px', border: `1px solid ${bdColor}`, textDecoration: 'none', transition: 'all 0.2s' }}
+                              onMouseEnter={e => { e.currentTarget.style.background='rgba(168,85,247,0.1)'; e.currentTarget.style.borderColor='rgba(168,85,247,0.3)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background=bgColor; e.currentTarget.style.borderColor=bdColor; }}
+                            >
+                              <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'2px' }}>
+                                {isTT && <i className="fa-brands fa-tiktok" style={{ color:'#fe2c55', fontSize:'0.8rem' }}></i>}
+                                {isIG && <i className="fa-brands fa-instagram" style={{ color:'#e1306c', fontSize:'0.8rem' }}></i>}
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#fff' }}>{src.title}</div>
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)' }}>
+                                <span style={{ color: srcColor, fontWeight: 600 }}>{src.source}</span>
+                                {src.date && ` · ${src.date}`} {src.engagement && ` · ${src.engagement}`}
+                              </div>
+                              {src.snippet && <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginTop: '4px', lineHeight: '1.4' }}>{src.snippet.substring(0, 150)}{src.snippet.length > 150 ? '...' : ''}</div>}
+                            </a>
+                          );
+                        })}
                       </div>
                     ) : (
                       <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', margin: 0 }}>No sources displayed (check step_counts for total)</p>
@@ -326,8 +331,11 @@ const TrendingIdeas = () => {
                             {srcs.map((src, i) => {
                               const u = src.url || '';
                               let icon = 'fa-solid fa-link';
-                              if (u.includes('youtube.com') || u.includes('youtu.be')) icon = 'fa-brands fa-youtube';
+                              if (u.includes('tiktok.com')) icon = 'fa-brands fa-tiktok';
+                              else if (u.includes('instagram.com')) icon = 'fa-brands fa-instagram';
+                              else if (u.includes('youtube.com') || u.includes('youtu.be')) icon = 'fa-brands fa-youtube';
                               else if (u.includes('reddit.com')) icon = 'fa-brands fa-reddit';
+                              else if (u.includes('twitter.com') || u.includes('x.com')) icon = 'fa-brands fa-x-twitter';
                               else if (u.includes('news.google.com') || u.includes('bing.com/news')) icon = 'fa-regular fa-newspaper';
                               else if (u.includes('trends.google.com')) icon = 'fa-solid fa-arrow-trend-up';
                               else if (u.includes('algolia') || u.includes('ycombinator')) icon = 'fa-brands fa-hacker-news';
