@@ -933,49 +933,77 @@ def research_google_trends_rss(keywords: list, geo: str = "US") -> list[dict]:
 def research_tiktok_trending(query: str, max_results: int = 8) -> list[dict]:
     """
     Search for trending TikTok content related to a topic.
-    Uses multiple approaches:
-    1. DuckDuckGo site-search for tiktok.com
-    2. Search for TikTok trend aggregator/reporting sites
-    3. Search for viral TikTok compilations and reports
-    All filtered to past 7 days for freshness.
+    
+    PRIORITY 1: Try TikTokApi (real TikTok data with actual links)
+    FALLBACK: Use Tavily/aggregator sites if TikTokApi fails
+    
+    All filtered to THIS WEEK for freshness.
     """
     results = []
+    
+    # ── PRIORITY 1: Try Real TikTok API ──────────────────────────────────────
+    try:
+        from tiktok_scraper import (
+            search_tiktok_by_keyword_sync,
+            filter_recent_videos,
+            format_tiktok_results_for_research,
+            TIKTOK_API_AVAILABLE
+        )
+        
+        if TIKTOK_API_AVAILABLE:
+            logger.info(f"[TikTok] Using REAL TikTok API for query: {query}")
+            
+            # Search TikTok directly
+            videos = search_tiktok_by_keyword_sync(query, count=max_results * 2)
+            
+            # Filter to past 7 days
+            recent_videos = filter_recent_videos(videos, days=7)
+            
+            # Format for research
+            if recent_videos:
+                results = format_tiktok_results_for_research(recent_videos[:max_results])
+                logger.info(f"[TikTok API] Found {len(results)} REAL TikTok videos for '{query}'")
+                
+                if results:
+                    return results  # SUCCESS! Return real TikTok data
+    except Exception as e:
+        logger.warning(f"[TikTok API] Failed to use real API: {e}. Falling back to aggregators.")
+    
+    # ── FALLBACK: Aggregator Sites ───────────────────────────────────────────
+    logger.info(f"[TikTok] Falling back to aggregator sites for query: {query}")
+    
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    # Focus on AGGREGATOR sites that report on TikTok trends (they have better access)
     tiktok_queries = [
-        f"site:tiktok.com {query}",
+        f"site:tokboard.com {query} trending",
+        f"site:tokchart.com {query} viral",
+        f"site:pentos.com tiktok {query} trending",
         f"tiktok \"{query}\" viral trend this week",
-        f"tiktok trending {query} this week",
-        f"{query} tiktok trend millions views",
+        f"tiktok trending {query} this week millions views",
+        f"{query} tiktok trend this week explained",
         f"viral tiktok about {query} this week",
         f"tiktok {query} sound trending now",
-        f"{query} went viral on tiktok",
-        f"tokboard {query} trending",
-        f"tiktok discover {query} popular",
-        f"{query} tiktok challenge this week",
+        f"{query} went viral on tiktok this week",
+        f"tiktok {query} challenge this week viral",
+        f"tiktok discover page {query} trending",
+        f"site:later.com tiktok {query} trending this week",
+        f"tiktok analytics {query} viral this week",
+        f"most viral tiktok {query} this week",
+        f"{query} tiktok hashtag trending now",
     ]
 
     tasks = []
-    for q in tiktok_queries[:6]:
+    for q in tiktok_queries[:12]:
         tasks.append(("Tavily", lambda q=q: research_tavily(q, 4)))
-    # Also check aggregator/reporting sites about TikTok trends
-    aggregator_queries = [
-        f"site:tokboard.com {query}",
-        f"site:tokchart.com {query} trending",
-        f"site:later.com tiktok trending {query}",
-        f"site:socialblade.com tiktok {query}",
-        f"tiktok analytics {query} viral this week",
-    ]
-    for q in aggregator_queries[:3]:
-        tasks.append(("Tavily", lambda q=q: research_tavily(q, 3)))
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=10) as ex:
         future_map = {ex.submit(fn): name for name, fn in tasks}
         for fut in as_completed(future_map):
             try:
-                items = fut.result(timeout=12)
+                items = fut.result(timeout=15)
                 for item in items:
-                    item["source"] = f"TikTok - {item.get('source', 'Web')}"
+                    item["source"] = f"TikTok Trends"
                 results += items
             except Exception as e:
                 logger.error(f"[TikTok] Task failed: {e}")
@@ -988,53 +1016,83 @@ def research_tiktok_trending(query: str, max_results: int = 8) -> list[dict]:
             seen.add(u)
             unique.append(r)
     results = unique[:max_results]
-    logger.info(f"[TikTok Trending] '{query}' -> {len(results)} results")
+    logger.info(f"[TikTok Trending] '{query}' -> {len(results)} results (aggregator fallback)")
     return results
 
 
 def research_instagram_trending(query: str, max_results: int = 8) -> list[dict]:
     """
     Search for trending Instagram Reels and posts related to a topic.
-    Uses multiple approaches:
-    1. DuckDuckGo site-search for instagram.com/reel/
-    2. Search for Instagram trend reports and aggregator sites
-    3. Search for viral Instagram content mentions across the web
-    All filtered to past 7 days for freshness.
+    
+    PRIORITY 1: Try Instaloader (real Instagram data with actual links)
+    FALLBACK: Use Tavily/aggregator sites if Instaloader fails
+    
+    All filtered to THIS WEEK for freshness.
     """
     results = []
+    
+    # ── PRIORITY 1: Try Real Instagram API ───────────────────────────────────
+    try:
+        from instagram_scraper import (
+            search_instagram_by_keywords_sync,
+            extract_hashtags_from_query,
+            format_instagram_results_for_research,
+            INSTALOADER_AVAILABLE
+        )
+        
+        if INSTALOADER_AVAILABLE:
+            logger.info(f"[Instagram] Using REAL Instagram API for query: {query}")
+            
+            # Extract hashtags from query
+            hashtags = extract_hashtags_from_query(query)
+            logger.info(f"[Instagram] Searching hashtags: {hashtags}")
+            
+            # Search Instagram directly
+            posts = search_instagram_by_keywords_sync(hashtags, max_results=max_results * 2, days=7)
+            
+            # Format for research
+            if posts:
+                results = format_instagram_results_for_research(posts[:max_results])
+                logger.info(f"[Instagram API] Found {len(results)} REAL Instagram posts for '{query}'")
+                
+                if results:
+                    return results  # SUCCESS! Return real Instagram data
+    except Exception as e:
+        logger.warning(f"[Instagram API] Failed to use real API: {e}. Falling back to aggregators.")
+    
+    # ── FALLBACK: Aggregator Sites ───────────────────────────────────────────
+    logger.info(f"[Instagram] Falling back to aggregator sites for query: {query}")
+    
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     ig_queries = [
-        f"site:instagram.com {query}",
         f"instagram reels \"{query}\" viral this week",
-        f"instagram reel {query} trending this week",
-        f"{query} went viral on instagram reels",
-        f"instagram {query} viral post millions likes",
-        f"instagram trending {query} explore page",
+        f"instagram reel {query} trending this week millions views",
+        f"{query} went viral on instagram reels this week",
+        f"instagram {query} viral post this week millions likes",
+        f"instagram trending {query} explore page this week",
         f"{query} instagram influencer viral this week",
-        f"instagram reels trend {query} sound",
+        f"instagram reels trend {query} sound this week",
+        f"site:later.com instagram reels {query} trending",
+        f"site:hootsuite.com instagram trend {query} this week",
+        f"instagram analytics {query} trending this week",
+        f"most viral instagram reels {query} this week",
+        f"{query} instagram hashtag trending this week",
+        f"instagram {query} audio trending now",
+        f"viral instagram content {query} this week",
     ]
 
     tasks = []
-    for q in ig_queries[:6]:
+    for q in ig_queries[:12]:
         tasks.append(("Tavily", lambda q=q: research_tavily(q, 4)))
-    # Aggregator sites that track Instagram trends
-    aggregator_queries = [
-        f"site:later.com instagram reels trending {query}",
-        f"site:hootsuite.com instagram trend {query}",
-        f"instagram analytics {query} trending this week",
-        f"most viral instagram reels {query} this week",
-    ]
-    for q in aggregator_queries[:3]:
-        tasks.append(("Tavily", lambda q=q: research_tavily(q, 3)))
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=10) as ex:
         future_map = {ex.submit(fn): name for name, fn in tasks}
         for fut in as_completed(future_map):
             try:
-                items = fut.result(timeout=12)
+                items = fut.result(timeout=15)
                 for item in items:
-                    item["source"] = f"Instagram - {item.get('source', 'Web')}"
+                    item["source"] = f"Instagram Trends"
                 results += items
             except Exception as e:
                 logger.error(f"[Instagram] Task failed: {e}")
@@ -1047,7 +1105,7 @@ def research_instagram_trending(query: str, max_results: int = 8) -> list[dict]:
             seen.add(u)
             unique.append(r)
     results = unique[:max_results]
-    logger.info(f"[Instagram Trending] '{query}' -> {len(results)} results")
+    logger.info(f"[Instagram Trending] '{query}' -> {len(results)} results (aggregator fallback)")
     return results
 
 
@@ -1877,36 +1935,62 @@ def ra_step1_shortform(state: NicheResearchState) -> dict:
     kw1 = keywords[1] if len(keywords) > 1 else niche
     kw2 = keywords[2] if len(keywords) > 2 else niche
 
-    # PRIORITY QUERIES: Focus on viral short-form content
-    shortform_queries = [
-        f"site:tiktok.com {niche} viral 2026",
-        f"tiktok {kw0} trending hashtag 2026",
-        f"tiktok {kw1} viral sound 2026",
-        f"tiktok {kw2} million views 2026",
-        f"instagram reels {niche} viral 2026",
-        f"instagram {kw0} trending reel 2026",
-        f"{niche} tiktok trend explained 2026",
-        f"{kw0} short video going viral this week",
-        f"{niche} youtube shorts viral 2026",
-        f"pinterest {niche} trending 2026",
-        f"{kw1} tiktok challenge trending",
-        f"{niche} instagram trending audio 2026",
-        f"viral {niche} content tiktok instagram",
-        f"{kw0} reels format trending now",
-        f"{niche} short form content viral 2026",
-    ]
-
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    
-    # Heavy parallel search across Tavily + DuckDuckGo
-    tasks = [lambda q=q: research_tavily(q, 6) for q in shortform_queries]
-    tasks += [lambda q=q: research_duckduckgo(q, 5) for q in shortform_queries[:8]]
 
-    with ThreadPoolExecutor(max_workers=15) as ex:
-        for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try: results += fut.result(timeout=15)
-            except Exception as e: logger.error(f"[Step1] {e}")
+    # ── Use dedicated TikTok, Instagram, and social aggregator scrapers ────────
+    tasks = [
+        # Dedicated TikTok scraper (deep multi-query search)
+        ("TikTok-niche", lambda: research_tiktok_trending(niche, 10)),
+        ("TikTok-kw0",   lambda: research_tiktok_trending(kw0, 8)),
+        ("TikTok-kw1",   lambda: research_tiktok_trending(kw1, 6)),
+        # Dedicated Instagram scraper (deep multi-query search)
+        ("IG-niche",     lambda: research_instagram_trending(niche, 10)),
+        ("IG-kw0",       lambda: research_instagram_trending(kw0, 8)),
+        ("IG-kw1",       lambda: research_instagram_trending(kw1, 6)),
+        # Cross-platform social aggregators
+        ("SocialAgg-niche", lambda: research_social_aggregators(niche, 8)),
+        ("SocialAgg-kw0",   lambda: research_social_aggregators(kw0, 6)),
+    ]
+
+    # ── Additional Tavily queries for short-form content ───────────────────────
+    shortform_queries = [
+        f"site:tiktok.com {niche} viral trending this week",
+        f"tiktok {kw0} viral hashtag trending right now",
+        f"tiktok {kw1} viral sound trending this week",
+        f"tiktok {kw2} million views this week",
+        f"instagram reels {niche} viral trending this week",
+        f"instagram {kw0} trending reel this week",
+        f"{niche} tiktok trend explained this week",
+        f"{kw0} short video going viral this week",
+        f"{niche} youtube shorts viral this week",
+        f"{kw1} tiktok challenge trending now",
+        f"{niche} instagram trending audio this week",
+        f"viral {niche} content tiktok instagram this week",
+        f"{kw0} reels format trending now",
+        f"{niche} short form content viral this week",
+    ]
+    for q in shortform_queries:
+        tasks.append(("Tavily", lambda q=q: research_tavily(q, 4)))
+
+    # ── DuckDuckGo fallback queries ───────────────────────────────────────────
+    ddg_queries = [
+        f"tiktok {niche} viral this week",
+        f"instagram reels {niche} viral this week",
+        f"{niche} short form video viral this week",
+        f"trending {niche} tiktok instagram this week",
+    ]
+    for q in ddg_queries:
+        tasks.append(("DDG", lambda q=q: research_duckduckgo(q, 5)))
+
+    with ThreadPoolExecutor(max_workers=20) as ex:
+        future_map = {ex.submit(fn): name for name, fn in tasks}
+        for fut in as_completed(future_map):
+            try:
+                items = fut.result(timeout=20)
+                results += items
+            except Exception as e:
+                logger.error(f"[Step1] {e}")
 
     seen, unique = set(), []
     for r in results:

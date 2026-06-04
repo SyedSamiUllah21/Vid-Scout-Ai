@@ -3,9 +3,11 @@ services:
     name: Vid-Scout-Ai
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python -m playwright install chromium
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 300 --keep-alive 5
     envVars:
       - key: FLASK_ENV
         value: production
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/.cache/ms-playwright
     autoDeploy: true
