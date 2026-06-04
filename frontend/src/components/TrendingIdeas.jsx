@@ -2,16 +2,16 @@ import React, { useState } from 'react';
 import { requestJson } from '../lib/api';
 
 const AGENT_STEPS = [
-  'Scanning Google Trends…',
-  'Reading Google + Bing News…',
-  'Deep-scanning Reddit…',
+  '🔥 Scanning TikTok & Instagram Reels (TOP PRIORITY)…',
+  'Searching YouTube trending videos…',
+  'Reading Google Trends data…',
+  'Deep-scanning Reddit discussions…',
   'Picking up X / Twitter signals…',
-  'Searching YouTube for trending videos…',
-  'Scanning TikTok & Reels…',
-  'Crawling niche blogs + arxiv…',
+  'Reading Google + Bing News…',
+  'Crawling niche blogs + academic sources…',
   'Checking forums & communities…',
   'Aggregating all sources…',
-  'Generating 5 ideas with AI…',
+  'Generating 5 viral ideas with AI…',
   'Formatting final report…',
 ];
 
@@ -126,12 +126,12 @@ const TrendingIdeas = () => {
               </h3>
               
               {[
-                { key: 'step1_trends', label: 'Step 1: Google Trends', icon: 'fa-chart-line', color: '#22c55e' },
-                { key: 'step2_news', label: 'Step 2: Google + Bing News', icon: 'fa-newspaper', color: '#3b82f6' },
-                { key: 'step3_reddit', label: 'Step 3: Reddit Deep Scan', icon: 'fa-brands fa-reddit', color: '#ff4500' },
-                { key: 'step4_twitter', label: 'Step 4: X/Twitter Signals', icon: 'fa-brands fa-x-twitter', color: '#1da1f2' },
-                { key: 'step5_youtube', label: 'Step 5: YouTube Trend Scan', icon: 'fa-brands fa-youtube', color: '#ff0000' },
-                { key: 'step6_shortform', label: 'Step 6: TikTok + Reels', icon: 'fa-brands fa-tiktok', color: '#fe2c55' },
+                { key: 'step1_shortform', label: '🔥 Step 1: TikTok + Instagram Reels (TOP PRIORITY)', icon: 'fa-brands fa-tiktok', color: '#fe2c55' },
+                { key: 'step2_youtube', label: 'Step 2: YouTube Trending Videos', icon: 'fa-brands fa-youtube', color: '#ff0000' },
+                { key: 'step3_trends', label: 'Step 3: Google Trends', icon: 'fa-chart-line', color: '#22c55e' },
+                { key: 'step4_reddit', label: 'Step 4: Reddit Deep Scan', icon: 'fa-brands fa-reddit', color: '#ff4500' },
+                { key: 'step5_twitter', label: 'Step 5: X/Twitter Signals', icon: 'fa-brands fa-x-twitter', color: '#1da1f2' },
+                { key: 'step6_news', label: 'Step 6: Google + Bing News', icon: 'fa-newspaper', color: '#3b82f6' },
                 { key: 'step7_blogs', label: 'Step 7: Niche Blogs + Academic', icon: 'fa-book-open', color: '#8b5cf6' },
                 { key: 'step8_forums', label: 'Step 8: Forums + Communities', icon: 'fa-comments', color: '#f59e0b' },
               ].map(({ key, label, icon, color }) => {

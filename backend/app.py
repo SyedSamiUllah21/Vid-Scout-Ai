@@ -1848,15 +1848,15 @@ class NicheResearchState(TypedDict):
     channel_keywords: list      # top keywords for the niche
     custom_system_prompt: str   # the full researcher persona injected into LLM
 
-    # ── per-step raw results ──────────────────────────────────────────────────
-    step1_trends: list          # pytrends + Google Trends RSS
-    step2_news: list            # Google News + Bing News
-    step3_reddit: list          # Reddit posts
-    step4_twitter_sim: list     # Tavily search simulating X/Twitter scan
-    step5_youtube: list         # YouTube Data API search
-    step6_shortform: list       # Tavily search simulating TikTok/Reels
-    step7_blogs: list           # Phys.org, arxiv, The Debrief, Space.com etc
-    step8_forums: list          # Quora + community Tavily search
+    # ── per-step raw results (REORDERED: TikTok/Instagram FIRST) ─────────────
+    step1_shortform: list       # TikTok/Instagram Reels viral trends (TOP PRIORITY)
+    step2_youtube: list         # YouTube Data API trending videos
+    step3_trends: list          # Google Trends (pytrends + RSS)
+    step4_reddit: list          # Reddit deep scan
+    step5_twitter: list         # X/Twitter + LinkedIn signals
+    step6_news: list            # Google News + Bing News
+    step7_blogs: list           # Blogs + Academic + Podcasts
+    step8_forums: list          # Quora + HackerNews + Communities
 
     # ── aggregated ────────────────────────────────────────────────────────────
     all_sources: list
@@ -1868,9 +1868,100 @@ class NicheResearchState(TypedDict):
     trend_summary: str
 
 
-# ── Step 1: Google Trends (pytrends + RSS) ───────────────────────────────────
-def ra_step1_trends(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 1 — Google Trends + Trending Searches")
+# ── Step 1: TikTok + Instagram Reels (TOP PRIORITY) ──────────────────────────
+def ra_step1_shortform(state: NicheResearchState) -> dict:
+    logger.info("[ResearchAgent] STEP 1 — TikTok + Instagram Reels Viral Trends (TOP PRIORITY)")
+    keywords = state["channel_keywords"]
+    niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
+    kw2 = keywords[2] if len(keywords) > 2 else niche
+
+    # PRIORITY QUERIES: Focus on viral short-form content
+    shortform_queries = [
+        f"site:tiktok.com {niche} viral 2026",
+        f"tiktok {kw0} trending hashtag 2026",
+        f"tiktok {kw1} viral sound 2026",
+        f"tiktok {kw2} million views 2026",
+        f"instagram reels {niche} viral 2026",
+        f"instagram {kw0} trending reel 2026",
+        f"{niche} tiktok trend explained 2026",
+        f"{kw0} short video going viral this week",
+        f"{niche} youtube shorts viral 2026",
+        f"pinterest {niche} trending 2026",
+        f"{kw1} tiktok challenge trending",
+        f"{niche} instagram trending audio 2026",
+        f"viral {niche} content tiktok instagram",
+        f"{kw0} reels format trending now",
+        f"{niche} short form content viral 2026",
+    ]
+
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    # Heavy parallel search across Tavily + DuckDuckGo
+    tasks = [lambda q=q: research_tavily(q, 6) for q in shortform_queries]
+    tasks += [lambda q=q: research_duckduckgo(q, 5) for q in shortform_queries[:8]]
+
+    with ThreadPoolExecutor(max_workers=15) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=15)
+            except Exception as e: logger.error(f"[Step1] {e}")
+
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u); unique.append(r)
+    logger.info(f"[ResearchAgent] Step 1 (TikTok/Instagram) found {len(unique)} viral short-form trends")
+    return {"step1_shortform": unique}
+
+
+# ── Step 2: YouTube Trending Videos ──────────────────────────────────────────
+def ra_step2_youtube(state: NicheResearchState) -> dict:
+    logger.info("[ResearchAgent] STEP 2 — YouTube Trending Videos")
+    keywords = state["channel_keywords"]
+    niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
+    kw2 = keywords[2] if len(keywords) > 2 else niche
+
+    yt_queries = [
+        niche, kw0, f"{kw1} 2026", f"{niche} viral",
+        f"{kw0} secrets revealed", f"{niche} trending video",
+        f"{kw1} most watched", f"{kw2} explained",
+        f"{niche} documentary", f"{kw0} tutorial"
+    ]
+
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    # YouTube Data API + Tavily fallback
+    tasks = [lambda q=q: research_youtube_videos(q, 8, "7d") for q in yt_queries[:8]]
+    tasks += [lambda q=q: research_tavily(q, 4) for q in [
+        f"site:youtube.com {niche} viral video 2026",
+        f"most viewed youtube {niche} this month",
+        f"youtube trending {kw0} 2026",
+        f"youtube {kw1} going viral now",
+    ]]
+
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=20)
+            except Exception as e: logger.error(f"[Step2] {e}")
+
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u); unique.append(r)
+    logger.info(f"[ResearchAgent] Step 2 (YouTube) found {len(unique)} trending videos")
+    return {"step2_youtube": unique}
+
+
+# ── Step 3: Google Trends (pytrends + RSS) ───────────────────────────────────
+def ra_step3_trends(state: NicheResearchState) -> dict:
+    logger.info("[ResearchAgent] STEP 3 — Google Trends + Trending Searches")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
     kw0 = keywords[0] if keywords else niche
@@ -1883,28 +1974,220 @@ def ra_step1_trends(state: NicheResearchState) -> dict:
     from concurrent.futures import ThreadPoolExecutor, as_completed
     trend_queries = [
         f"{niche} trending this week",
-        f"{kw0} Google Trends spike",
+        f"{kw0} Google Trends spike 2026",
         f"{kw1} trending searches this week",
         f"what is trending in {niche} right now",
-        f"{niche} most searched topic June this week",
+        f"{niche} most searched topic 2026",
     ]
     with ThreadPoolExecutor(max_workers=5) as ex:
         futs = [ex.submit(research_tavily, q, 4) for q in trend_queries]
         for fut in as_completed(futs):
             try: results += fut.result(timeout=15)
-            except Exception as e: logger.error(f"[Step1] {e}")
+            except Exception as e: logger.error(f"[Step3] {e}")
 
     seen, unique = set(), []
     for r in results:
         u = r.get("url", "")
         if u and u not in seen:
             seen.add(u); unique.append(r)
+    logger.info(f"[ResearchAgent] Step 3 (Google Trends) found {len(unique)} trend signals")
+    return {"step3_trends": unique}
+            seen.add(u); unique.append(r)
     logger.info(f"[ResearchAgent] Step 1 found {len(unique)} trend signals")
     return {"step1_trends": unique}
 
 
-# ── Step 2: Google + Bing News (past 7 days) ─────────────────────────────────
-def ra_step2_news(state: NicheResearchState) -> dict:
+
+# ── Step 4: Reddit Deep Scan ─────────────────────────────────────────────────
+def ra_step4_reddit(state: NicheResearchState) -> dict:
+    logger.info("[ResearchAgent] STEP 4 — Reddit Deep Scan")
+    keywords = state["channel_keywords"]
+    niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
+    kw2 = keywords[2] if len(keywords) > 2 else niche
+
+    reddit_queries = [
+        f"{niche} site:reddit.com", f"{kw0} reddit hot posts this week",
+        f"{kw1} reddit discussion 2026", f"{kw2} reddit top posts",
+        f"{niche} reddit viral thread", f"{kw0} reddit debate controversy",
+        f"{niche} reddit r/ trending", f"{niche} reddit asked answered",
+    ]
+
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    tasks = [lambda q=q: research_reddit(q, 6) for q in reddit_queries]
+    tasks += [lambda q=q: research_tavily(q, 4) for q in reddit_queries[:4]]
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=15)
+            except Exception as e: logger.error(f"[Step4] {e}")
+
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u); unique.append(r)
+    logger.info(f"[ResearchAgent] Step 4 (Reddit) found {len(unique)} posts")
+    return {"step4_reddit": unique}
+
+
+# ── Step 5: X/Twitter + LinkedIn + Social Signals ───────────────────────────
+def ra_step5_twitter(state: NicheResearchState) -> dict:
+    logger.info("[ResearchAgent] STEP 5 — X/Twitter + LinkedIn + Social")
+    keywords = state["channel_keywords"]
+    niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
+
+    social_queries = [
+        f"site:x.com {niche} viral 2026",
+        f"site:twitter.com {kw0} trending thread",
+        f"{kw1} twitter viral tweet 2026",
+        f"{niche} linkedin viral post 2026",
+        f"site:linkedin.com {kw0} trending article",
+        f"{niche} social media viral moment 2026",
+        f"{kw1} influencer talking about trending",
+    ]
+
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    tasks = [lambda q=q: research_tavily(q, 4) for q in social_queries]
+    tasks += [lambda: research_duckduckgo(f"site:x.com {niche} viral 2026", 5)]
+    tasks += [lambda: research_duckduckgo(f"site:linkedin.com {kw0} 2026", 4)]
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=15)
+            except Exception as e: logger.error(f"[Step5] {e}")
+
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u); unique.append(r)
+    logger.info(f"[ResearchAgent] Step 5 (X/Twitter) found {len(unique)} social signals")
+    return {"step5_twitter": unique}
+
+
+# ── Step 6: Google + Bing News (past 7 days) ─────────────────────────────────
+def ra_step6_news(state: NicheResearchState) -> dict:
+    logger.info("[ResearchAgent] STEP 6 — Google + Bing News (deep)")
+    keywords = state["channel_keywords"]
+    niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
+    kw2 = keywords[2] if len(keywords) > 2 else niche
+    kw3 = keywords[3] if len(keywords) > 3 else niche
+
+    news_queries = [
+        niche, f"{kw0} news 2026", f"{kw1} latest research study",
+        f"{kw2} new discovery 2026", f"{kw3} breaking news",
+        f"{niche} viral article this week", f"{niche} study 2026",
+        f"{kw0} controversy debate 2026", f"{niche} expert reveals",
+    ]
+
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    tasks = []
+    for q in news_queries:
+        tasks.append(lambda q=q: research_google_news(q, 5))
+        tasks.append(lambda q=q: research_bing_news(q, 4))
+        tasks.append(lambda q=q: research_tavily(q, 3))
+
+    with ThreadPoolExecutor(max_workers=15) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=20)
+            except Exception as e: logger.error(f"[Step6] {e}")
+
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u); unique.append(r)
+    logger.info(f"[ResearchAgent] Step 6 (News) found {len(unique)} articles")
+    return {"step6_news": unique}
+
+
+# ── Step 7: Blogs + Academic + Podcasts + Newsletters + Medium ───────────────
+def ra_step7_blogs(state: NicheResearchState) -> dict:
+    logger.info("[ResearchAgent] STEP 7 — Blogs + Academic + Podcasts + Newsletters")
+    keywords = state["channel_keywords"]
+    niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
+
+    deep_queries = [
+        f"{niche} blog article 2026", f"{kw0} research paper 2026",
+        f"{kw1} academic study new findings", f"{niche} expert opinion article",
+        f"{kw0} substack newsletter viral", f"site:medium.com {niche} 2026",
+        f"{niche} podcast episode trending 2026", f"arxiv {niche} new study",
+        f"{kw0} article 2026", f"{kw1} ted talk trending 2026",
+        f"{niche} new book viral 2026",
+    ]
+
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    tasks = [lambda q=q: research_tavily(q, 4) for q in deep_queries]
+    tasks += [lambda: research_duckduckgo(f"{niche} expert blog 2026", 6)]
+    tasks += [lambda: research_rss_blogs(keywords[:5], 8)]
+
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=20)
+            except Exception as e: logger.error(f"[Step7] {e}")
+
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u); unique.append(r)
+    logger.info(f"[ResearchAgent] Step 7 (Blogs/Academic) found {len(unique)} sources")
+    return {"step7_blogs": unique}
+
+
+# ── Step 8: Forums + Communities + Quora + HN + Discord + Q&A ───────────────
+def ra_step8_forums(state: NicheResearchState) -> dict:
+    logger.info("[ResearchAgent] STEP 8 — Forums + Communities + Q&A + Discord")
+    keywords = state["channel_keywords"]
+    niche    = state["channel_niche"]
+    kw0 = keywords[0] if keywords else niche
+    kw1 = keywords[1] if len(keywords) > 1 else niche
+
+    community_queries = [
+        f"site:quora.com {niche} 2026",
+        f"quora {kw0} most asked question 2026",
+        f"site:quora.com {kw1} answer viral",
+        f"{niche} forum community discussion 2026",
+        f"{kw0} discord server trending topic",
+        f"{niche} facebook group viral post",
+        f"{kw0} community debate hot topic",
+        f"{niche} stack exchange question 2026",
+        f"people asking about {niche} 2026",
+        f"{kw1} discussion board new post",
+    ]
+
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    tasks = [lambda q=q: research_tavily(q, 4) for q in community_queries]
+    tasks += [lambda: research_hackernews(niche, 6)]
+    tasks += [lambda: research_hackernews(kw0, 5)]
+    tasks += [lambda: research_hackernews(kw1, 4)]
+    tasks += [lambda: research_duckduckgo(f"site:quora.com {niche}", 5)]
+
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        for fut in as_completed(ex.submit(fn) for fn in tasks):
+            try: results += fut.result(timeout=15)
+            except Exception as e: logger.error(f"[Step8] {e}")
+
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u); unique.append(r)
+    logger.info(f"[ResearchAgent] Step 8 (Forums/Communities) found {len(unique)} signals")
+    return {"step8_forums": unique}
     logger.info("[ResearchAgent] STEP 2 — Google + Bing News (deep)")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
@@ -1942,43 +2225,9 @@ def ra_step2_news(state: NicheResearchState) -> dict:
     return {"step2_news": unique}
 
 
-# ── Step 3: Reddit Deep Scan ─────────────────────────────────────────────────
-def ra_step3_reddit(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 3 — Reddit Deep Scan")
-    keywords = state["channel_keywords"]
-    niche    = state["channel_niche"]
-    kw0 = keywords[0] if keywords else niche
-    kw1 = keywords[1] if len(keywords) > 1 else niche
-    kw2 = keywords[2] if len(keywords) > 2 else niche
 
-    reddit_queries = [
-        f"{niche} site:reddit.com", f"{kw0} reddit hot posts this week",
-        f"{kw1} reddit discussion this week", f"{kw2} reddit top posts",
-        f"{niche} reddit viral thread", f"{kw0} reddit debate controversy",
-        f"{niche} reddit r/ trending", f"{niche} reddit asked answered",
-    ]
-
-    results = []
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    tasks = [lambda q=q: research_reddit(q, 6) for q in reddit_queries]
-    tasks += [lambda q=q: research_tavily(q, 4) for q in reddit_queries[:4]]
-
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try: results += fut.result(timeout=15)
-            except Exception as e: logger.error(f"[Step3] {e}")
-
-    seen, unique = set(), []
-    for r in results:
-        u = r.get("url", "")
-        if u and u not in seen:
-            seen.add(u); unique.append(r)
-    logger.info(f"[ResearchAgent] Step 3 found {len(unique)} Reddit posts")
-    return {"step3_reddit": unique}
-
-
-# ── Step 4: X/Twitter + LinkedIn + Social Signals ───────────────────────────
-def ra_step4_twitter(state: NicheResearchState) -> dict:
+# ── Aggregator Node ───────────────────────────────────────────────────────────
+def ra_aggregator(state: NicheResearchState) -> dict:
     logger.info("[ResearchAgent] STEP 4 — X/Twitter + LinkedIn + Threads + Bluesky + Social")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
@@ -2220,15 +2469,16 @@ def ra_aggregator(state: NicheResearchState) -> dict:
     logger.info("[ResearchAgent] AGGREGATOR — Merging all 8-step sources")
 
     all_sources = []
+    # UPDATED ORDER: TikTok/Instagram first
     source_labels = [
-        ("step1_trends",   "Google Trends"),
-        ("step2_news",     "Google/Bing News"),
-        ("step3_reddit",   "Reddit"),
-        ("step4_twitter_sim", "X/Twitter"),
-        ("step5_youtube",  "YouTube"),
-        ("step6_shortform","TikTok/Reels"),
-        ("step7_blogs",    "Niche Blogs"),
-        ("step8_forums",   "Forums"),
+        ("step1_shortform", "TikTok/Instagram Reels"),
+        ("step2_youtube",   "YouTube"),
+        ("step3_trends",    "Google Trends"),
+        ("step4_reddit",    "Reddit"),
+        ("step5_twitter",   "X/Twitter"),
+        ("step6_news",      "Google/Bing News"),
+        ("step7_blogs",     "Niche Blogs"),
+        ("step8_forums",    "Forums"),
     ]
 
     seen_urls = set()
@@ -2240,22 +2490,20 @@ def ra_aggregator(state: NicheResearchState) -> dict:
                 item["_step"] = label
                 all_sources.append(item)
 
-    # Priority sort: Balanced — social media platforms ranked equally with news
-    # This ensures TikTok, Instagram, Twitter signals aren't buried at the bottom
+    # Priority sort: TikTok/Instagram FIRST (matches new step order)
     step_priority = {
-        "Google Trends": 0,
-        "TikTok/Reels": 1,   # Social media ranked HIGH — was 6, now 1
-        "X/Twitter": 2,      # Social media ranked HIGH — was 5, now 2
-        "Google/Bing News": 3,
-        "Reddit": 4,
-        "YouTube": 5,
+        "TikTok/Instagram Reels": 0,  # TOP PRIORITY
+        "YouTube": 1,
+        "Google Trends": 2,
+        "Reddit": 3,
+        "X/Twitter": 4,
+        "Google/Bing News": 5,
         "Niche Blogs": 6,
         "Forums": 7,
     }
     all_sources.sort(key=lambda x: step_priority.get(x.get("_step", ""), 9))
 
-    # Build a more focused web_block with better structure
-    # Increased from 60 to 80 to ensure social media sources aren't cut off
+    # Build web_block with TikTok/Instagram sources prominently featured
     web_block_lines = []
     for idx, r in enumerate(all_sources[:80], 1):  # Increased cap for social media coverage
         if r.get("url", "").startswith("http"):
@@ -2318,38 +2566,43 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
     )
 
     # ── Compact human prompt with research data ───────────────────────────────
-    # Count sources per step for the prompt
+    # Count sources per step for the prompt (UPDATED ORDER)
     step_source_counts = {
+        "TikTok/Instagram Reels": len([s for s in state.get("all_sources", []) if s.get("_step") == "TikTok/Instagram Reels"]),  # TOP PRIORITY
+        "YouTube": len([s for s in state.get("all_sources", []) if s.get("_step") == "YouTube"]),
         "Google Trends": len([s for s in state.get("all_sources", []) if s.get("_step") == "Google Trends"]),
-        "Google/Bing News": len([s for s in state.get("all_sources", []) if s.get("_step") == "Google/Bing News"]),
         "Reddit": len([s for s in state.get("all_sources", []) if s.get("_step") == "Reddit"]),
         "X/Twitter": len([s for s in state.get("all_sources", []) if s.get("_step") == "X/Twitter"]),
-        "YouTube": len([s for s in state.get("all_sources", []) if s.get("_step") == "YouTube"]),
-        "TikTok/Reels": len([s for s in state.get("all_sources", []) if s.get("_step") == "TikTok/Reels"]),
+        "Google/Bing News": len([s for s in state.get("all_sources", []) if s.get("_step") == "Google/Bing News"]),
         "Niche Blogs": len([s for s in state.get("all_sources", []) if s.get("_step") == "Niche Blogs"]),
         "Forums": len([s for s in state.get("all_sources", []) if s.get("_step") == "Forums"]),
     }
     source_breakdown = "\n".join(f"  - {k}: {v} sources" for k, v in step_source_counts.items() if v > 0)
     
     # Calculate social media coverage for emphasis
-    social_count = step_source_counts.get("TikTok/Reels", 0) + step_source_counts.get("X/Twitter", 0)
+    social_count = (
+        step_source_counts.get("TikTok/Instagram Reels", 0) + 
+        step_source_counts.get("X/Twitter", 0)
+    )
     social_emphasis = (
-        f"\n\n⚡ SOCIAL MEDIA SIGNALS: {social_count} sources from TikTok/Instagram/Twitter/X. "
+        f"\n\n⚡ SOCIAL MEDIA PRIORITY: {social_count} sources from TikTok/Instagram/Twitter/X. "
         "These represent what's ACTUALLY going viral on social media RIGHT NOW. "
-        "Prioritize ideas inspired by these social signals over traditional news.\n"
+        "**TikTok/Instagram were researched FIRST and have TOP PRIORITY.** "
+        "Your ideas MUST be heavily inspired by these social signals, not traditional news.\n"
     ) if social_count > 0 else ""
 
     human_prompt = (
         f"NICHE: {niche}\n"
         f"KEYWORDS: {', '.join(keywords[:5])}\n"
         f"CHANNEL STYLE (recent uploads):\n{yt_style}\n\n"
-        f"RESEARCH BREAKDOWN BY PLATFORM:\n{source_breakdown}\n"
+        f"RESEARCH BREAKDOWN BY PLATFORM (TikTok/Instagram researched FIRST):\n{source_breakdown}\n"
         f"{social_emphasis}\n"
-        f"FULL RESEARCH DATA (all 8 sources combined):\n{web_block[:7000]}\n\n"
+        f"FULL RESEARCH DATA (all 8 sources combined, TikTok/Instagram at top):\n{web_block[:7000]}\n\n"
         "CRITICAL REQUIREMENTS:\n"
-        "- Each idea MUST cite sources from MULTIPLE platforms (not just Google Trends/News)\n"
-        "- At least 2 ideas must be inspired by social media viral content (TikTok, Instagram, Twitter/X)\n"
-        "- Prioritize cross-platform trends (e.g., topic on TikTok + Reddit + News)\n"
+        "- AT LEAST 3 of 5 ideas MUST be directly inspired by TikTok/Instagram/Twitter viral content\n"
+        "- Prioritize social media trends over traditional news articles\n"
+        "- Each idea MUST cite sources from MULTIPLE platforms\n"
+        "- Look for topics going viral on TikTok/Instagram FIRST, then validate with other platforms\n"
         "- Use the [Platform] labels in the research data to cite diverse sources\n"
         "- ONLY trends from the past 7 days\n\n"
         "Generate 5 best viral ideas. Return JSON only."
@@ -2482,30 +2735,31 @@ def build_research_agent_graph():
     """
     wf = StateGraph(NicheResearchState)
 
-    wf.add_node("step1_trends",   ra_step1_trends)
-    wf.add_node("step2_news",     ra_step2_news)
-    wf.add_node("step3_reddit",   ra_step3_reddit)
-    wf.add_node("step4_twitter",  ra_step4_twitter)
-    wf.add_node("step5_youtube",  ra_step5_youtube)
-    wf.add_node("step6_shortform",ra_step6_shortform)
-    wf.add_node("step7_blogs",    ra_step7_blogs)
-    wf.add_node("step8_forums",   ra_step8_forums)
-    wf.add_node("aggregator",     ra_aggregator)
-    wf.add_node("synthesizer",    ra_synthesizer)
-    wf.add_node("formatter",      ra_formatter)
+    # UPDATED ORDER: TikTok/Instagram FIRST
+    wf.add_node("step1_shortform", ra_step1_shortform)  # TikTok/Instagram TOP PRIORITY
+    wf.add_node("step2_youtube",   ra_step2_youtube)
+    wf.add_node("step3_trends",    ra_step3_trends)
+    wf.add_node("step4_reddit",    ra_step4_reddit)
+    wf.add_node("step5_twitter",   ra_step5_twitter)
+    wf.add_node("step6_news",      ra_step6_news)
+    wf.add_node("step7_blogs",     ra_step7_blogs)
+    wf.add_node("step8_forums",    ra_step8_forums)
+    wf.add_node("aggregator",      ra_aggregator)
+    wf.add_node("synthesizer",     ra_synthesizer)
+    wf.add_node("formatter",       ra_formatter)
 
-    wf.set_entry_point("step1_trends")
-    wf.add_edge("step1_trends",   "step2_news")
-    wf.add_edge("step2_news",     "step3_reddit")
-    wf.add_edge("step3_reddit",   "step4_twitter")
-    wf.add_edge("step4_twitter",  "step5_youtube")
-    wf.add_edge("step5_youtube",  "step6_shortform")
-    wf.add_edge("step6_shortform","step7_blogs")
-    wf.add_edge("step7_blogs",    "step8_forums")
-    wf.add_edge("step8_forums",   "aggregator")
-    wf.add_edge("aggregator",     "synthesizer")
-    wf.add_edge("synthesizer",    "formatter")
-    wf.add_edge("formatter",      END)
+    wf.set_entry_point("step1_shortform")  # START with TikTok/Instagram
+    wf.add_edge("step1_shortform", "step2_youtube")
+    wf.add_edge("step2_youtube",   "step3_trends")
+    wf.add_edge("step3_trends",    "step4_reddit")
+    wf.add_edge("step4_reddit",    "step5_twitter")
+    wf.add_edge("step5_twitter",   "step6_news")
+    wf.add_edge("step6_news",      "step7_blogs")
+    wf.add_edge("step7_blogs",     "step8_forums")
+    wf.add_edge("step8_forums",    "aggregator")
+    wf.add_edge("aggregator",      "synthesizer")
+    wf.add_edge("synthesizer",     "formatter")
+    wf.add_edge("formatter",       END)
 
     return wf.compile()
 
@@ -2552,12 +2806,12 @@ def research_agent_route():
         channel_niche=channel_niche,
         channel_keywords=channel_keywords,
         custom_system_prompt=custom_prompt,
-        step1_trends=[],
-        step2_news=[],
-        step3_reddit=[],
-        step4_twitter_sim=[],
-        step5_youtube=[],
-        step6_shortform=[],
+        step1_shortform=[],  # TikTok/Instagram FIRST
+        step2_youtube=[],
+        step3_trends=[],
+        step4_reddit=[],
+        step5_twitter=[],
+        step6_news=[],
         step7_blogs=[],
         step8_forums=[],
         all_sources=[],
@@ -2575,14 +2829,14 @@ def research_agent_route():
         trend_summary = result.get("trend_summary", "")
         all_sources   = result.get("all_sources", [])
 
-        # Step-level source counts for transparency
+        # Step-level source counts for transparency (UPDATED ORDER)
         step_counts = {
-            "step1_trends":    len(result.get("step1_trends", [])),
-            "step2_news":      len(result.get("step2_news", [])),
-            "step3_reddit":    len(result.get("step3_reddit", [])),
-            "step4_twitter":   len(result.get("step4_twitter_sim", [])),
-            "step5_youtube":   len(result.get("step5_youtube", [])),
-            "step6_shortform": len(result.get("step6_shortform", [])),
+            "step1_shortform": len(result.get("step1_shortform", [])),  # TikTok/Instagram FIRST
+            "step2_youtube":   len(result.get("step2_youtube", [])),
+            "step3_trends":    len(result.get("step3_trends", [])),
+            "step4_reddit":    len(result.get("step4_reddit", [])),
+            "step5_twitter":   len(result.get("step5_twitter", [])),
+            "step6_news":      len(result.get("step6_news", [])),
             "step7_blogs":     len(result.get("step7_blogs", [])),
             "step8_forums":    len(result.get("step8_forums", [])),
             "total_unique":    len(all_sources),
@@ -3236,12 +3490,12 @@ def trending_ideas():
         channel_niche=channel_niche,
         channel_keywords=channel_keywords[:10],
         custom_system_prompt=custom_prompt,
-        step1_trends=[],
-        step2_news=[],
-        step3_reddit=[],
-        step4_twitter_sim=[],
-        step5_youtube=[],
-        step6_shortform=[],
+        step1_shortform=[],  # TikTok/Instagram FIRST
+        step2_youtube=[],
+        step3_trends=[],
+        step4_reddit=[],
+        step5_twitter=[],
+        step6_news=[],
         step7_blogs=[],
         step8_forums=[],
         all_sources=[],
@@ -3260,12 +3514,12 @@ def trending_ideas():
         all_sources   = result.get("all_sources", [])
 
         step_counts = {
-            "step1_trends":    len(result.get("step1_trends", [])),
-            "step2_news":      len(result.get("step2_news", [])),
-            "step3_reddit":    len(result.get("step3_reddit", [])),
-            "step4_twitter":   len(result.get("step4_twitter_sim", [])),
-            "step5_youtube":   len(result.get("step5_youtube", [])),
-            "step6_shortform": len(result.get("step6_shortform", [])),
+            "step1_shortform": len(result.get("step1_shortform", [])),  # TikTok/Instagram FIRST
+            "step2_youtube":   len(result.get("step2_youtube", [])),
+            "step3_trends":    len(result.get("step3_trends", [])),
+            "step4_reddit":    len(result.get("step4_reddit", [])),
+            "step5_twitter":   len(result.get("step5_twitter", [])),
+            "step6_news":      len(result.get("step6_news", [])),
             "step7_blogs":     len(result.get("step7_blogs", [])),
             "step8_forums":    len(result.get("step8_forums", [])),
             "total_unique":    len(all_sources),
@@ -3289,14 +3543,14 @@ def trending_ideas():
             "sources_used":  len(all_sources),
             "channel":       channel_info,
             "window_label":  window_label,
-            # Add detailed per-step research data for protocol validation
+            # Add detailed per-step research data for protocol validation (UPDATED ORDER)
             "research_details": {
-                "step1_trends":    result.get("step1_trends", [])[:10],
-                "step2_news":      result.get("step2_news", [])[:10],
-                "step3_reddit":    result.get("step3_reddit", [])[:10],
-                "step4_twitter":   result.get("step4_twitter_sim", [])[:10],
-                "step5_youtube":   result.get("step5_youtube", [])[:10],
-                "step6_shortform": result.get("step6_shortform", [])[:10],
+                "step1_shortform": result.get("step1_shortform", [])[:10],  # TikTok/Instagram FIRST
+                "step2_youtube":   result.get("step2_youtube", [])[:10],
+                "step3_trends":    result.get("step3_trends", [])[:10],
+                "step4_reddit":    result.get("step4_reddit", [])[:10],
+                "step5_twitter":   result.get("step5_twitter", [])[:10],
+                "step6_news":      result.get("step6_news", [])[:10],
                 "step7_blogs":     result.get("step7_blogs", [])[:10],
                 "step8_forums":    result.get("step8_forums", [])[:10],
             }
