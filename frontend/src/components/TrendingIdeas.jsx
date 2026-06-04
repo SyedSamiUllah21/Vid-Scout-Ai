@@ -11,7 +11,7 @@ const AGENT_STEPS = [
   'Crawling niche blogs + arxiv…',
   'Checking forums & communities…',
   'Aggregating all sources…',
-  'Generating 10 ideas with AI…',
+  'Generating 5 ideas with AI…',
   'Formatting final report…',
 ];
 

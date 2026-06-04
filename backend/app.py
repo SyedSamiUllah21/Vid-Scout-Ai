@@ -929,6 +929,179 @@ def research_google_trends_rss(keywords: list, geo: str = "US") -> list[dict]:
             logger.error(f"[Google Trends RSS] FAILED: {e}")
     return results
 
+
+def research_tiktok_trending(query: str, max_results: int = 8) -> list[dict]:
+    """
+    Search for trending TikTok content related to a topic.
+    Uses multiple approaches:
+    1. DuckDuckGo site-search for tiktok.com
+    2. Search for TikTok trend aggregator/reporting sites
+    3. Search for viral TikTok compilations and reports
+    All filtered to past 7 days for freshness.
+    """
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    tiktok_queries = [
+        f"site:tiktok.com {query}",
+        f"tiktok \"{query}\" viral trend this week",
+        f"tiktok trending {query} 2025",
+        f"{query} tiktok trend millions views",
+        f"viral tiktok about {query} this week",
+        f"tiktok {query} sound trending now",
+        f"{query} went viral on tiktok",
+        f"tokboard {query} trending",
+        f"tiktok discover {query} popular",
+        f"{query} tiktok challenge 2025",
+    ]
+
+    tasks = []
+    for q in tiktok_queries[:6]:
+        tasks.append(("DDG", lambda q=q: research_duckduckgo(q, 4)))
+    # Also check aggregator/reporting sites about TikTok trends
+    aggregator_queries = [
+        f"site:tokboard.com {query}",
+        f"site:tokchart.com {query} trending",
+        f"site:later.com tiktok trending {query}",
+        f"site:socialblade.com tiktok {query}",
+        f"tiktok analytics {query} viral this week 2025",
+    ]
+    for q in aggregator_queries[:3]:
+        tasks.append(("DDG-agg", lambda q=q: research_duckduckgo(q, 3)))
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        future_map = {ex.submit(fn): name for name, fn in tasks}
+        for fut in as_completed(future_map):
+            try:
+                items = fut.result(timeout=12)
+                for item in items:
+                    item["source"] = f"TikTok - {item.get('source', 'Web')}"
+                results += items
+            except Exception as e:
+                logger.error(f"[TikTok] Task failed: {e}")
+
+    # Deduplicate
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u)
+            unique.append(r)
+    results = unique[:max_results]
+    logger.info(f"[TikTok Trending] '{query}' -> {len(results)} results")
+    return results
+
+
+def research_instagram_trending(query: str, max_results: int = 8) -> list[dict]:
+    """
+    Search for trending Instagram Reels and posts related to a topic.
+    Uses multiple approaches:
+    1. DuckDuckGo site-search for instagram.com/reel/
+    2. Search for Instagram trend reports and aggregator sites
+    3. Search for viral Instagram content mentions across the web
+    All filtered to past 7 days for freshness.
+    """
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    ig_queries = [
+        f"site:instagram.com {query}",
+        f"instagram reels \"{query}\" viral this week",
+        f"instagram reel {query} trending 2025",
+        f"{query} went viral on instagram reels",
+        f"instagram {query} viral post millions likes",
+        f"instagram trending {query} explore page",
+        f"{query} instagram influencer viral 2025",
+        f"instagram reels trend {query} sound",
+    ]
+
+    tasks = []
+    for q in ig_queries[:6]:
+        tasks.append(("DDG", lambda q=q: research_duckduckgo(q, 4)))
+    # Aggregator sites that track Instagram trends
+    aggregator_queries = [
+        f"site:later.com instagram reels trending {query}",
+        f"site:hootsuite.com instagram trend {query}",
+        f"instagram analytics {query} trending this week 2025",
+        f"most viral instagram reels {query} this week",
+    ]
+    for q in aggregator_queries[:3]:
+        tasks.append(("DDG-agg", lambda q=q: research_duckduckgo(q, 3)))
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        future_map = {ex.submit(fn): name for name, fn in tasks}
+        for fut in as_completed(future_map):
+            try:
+                items = fut.result(timeout=12)
+                for item in items:
+                    item["source"] = f"Instagram - {item.get('source', 'Web')}"
+                results += items
+            except Exception as e:
+                logger.error(f"[Instagram] Task failed: {e}")
+
+    # Deduplicate
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u)
+            unique.append(r)
+    results = unique[:max_results]
+    logger.info(f"[Instagram Trending] '{query}' -> {len(results)} results")
+    return results
+
+
+def research_social_aggregators(query: str, max_results: int = 8) -> list[dict]:
+    """
+    Search cross-platform social media trend aggregator sites.
+    These sites track what's trending across TikTok, Instagram, Twitter, YouTube, etc.
+    Gives a holistic view of what's going viral across ALL social platforms.
+    """
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # Sites that aggregate social media trends across platforms
+    aggregator_queries = [
+        f"site:explodingtopics.com {query}",
+        f"site:trends.google.com {query}",
+        f"site:buzzsumo.com {query} trending",
+        f"{query} social media trend report this week 2025",
+        f"{query} going viral across social media platforms 2025",
+        f"what is trending about {query} on social media right now",
+        f"{query} viral moment social media this week",
+        f"cross platform viral {query} tiktok instagram twitter",
+        f"{query} snapchat spotlight viral 2025",
+        f"{query} threads viral post 2025",
+        f"site:bsky.app {query}",
+        f"{query} most shared social media content this week",
+    ]
+
+    tasks = []
+    for q in aggregator_queries[:8]:
+        tasks.append(("DDG", lambda q=q: research_duckduckgo(q, 3)))
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        future_map = {ex.submit(fn): name for name, fn in tasks}
+        for fut in as_completed(future_map):
+            try:
+                items = fut.result(timeout=12)
+                for item in items:
+                    item["source"] = f"Social Aggregator - {item.get('source', 'Web')}"
+                results += items
+            except Exception as e:
+                logger.error(f"[Social Aggregator] Task failed: {e}")
+
+    # Deduplicate
+    seen, unique = set(), []
+    for r in results:
+        u = r.get("url", "")
+        if u and u not in seen:
+            seen.add(u)
+            unique.append(r)
+    results = unique[:max_results]
+    logger.info(f"[Social Aggregators] '{query}' -> {len(results)} results")
+    return results
+
 def research_tavily(query: str, max_results: int = 5) -> list[dict]:
     """
     Use Tavily AI search with automatic failover to backup API keys if rate limited.
@@ -1806,22 +1979,35 @@ def ra_step3_reddit(state: NicheResearchState) -> dict:
 
 # ── Step 4: X/Twitter + LinkedIn + Social Signals ───────────────────────────
 def ra_step4_twitter(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 4 — X/Twitter + LinkedIn + Social")
+    logger.info("[ResearchAgent] STEP 4 — X/Twitter + LinkedIn + Threads + Bluesky + Social")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
     kw0 = keywords[0] if keywords else niche
     kw1 = keywords[1] if len(keywords) > 1 else niche
+    kw2 = keywords[2] if len(keywords) > 2 else niche
 
     social_queries = [
+        # X / Twitter
         f"site:x.com {niche} viral 2025",
         f"site:twitter.com {kw0} trending thread",
         f"{kw1} twitter viral tweet 2025",
+        f"site:nitter.net {niche} viral",
+        f"{niche} X twitter went viral this week",
+        # LinkedIn
         f"{niche} linkedin viral post 2025",
         f"site:linkedin.com {kw0} trending article",
-        f"{niche} instagram viral post 2025",
+        # Threads (Meta)
+        f"site:threads.net {niche} viral 2025",
+        f"{kw0} threads viral post this week",
+        # Bluesky
+        f"site:bsky.app {niche} trending",
+        f"{kw1} bluesky viral post 2025",
+        # Facebook
         f"{kw0} facebook viral post 2025",
-        f"{niche} social media viral moment 2025",
+        # Cross-platform
+        f"{niche} social media viral moment this week 2025",
         f"{kw1} influencer talking about trending",
+        f"{kw2} social media debate controversy this week",
     ]
 
     results = []
@@ -1829,8 +2015,10 @@ def ra_step4_twitter(state: NicheResearchState) -> dict:
     tasks = [lambda q=q: research_tavily(q, 4) for q in social_queries]
     tasks += [lambda: research_duckduckgo(f"site:x.com {niche} viral 2025", 5)]
     tasks += [lambda: research_duckduckgo(f"site:linkedin.com {kw0} 2025", 4)]
+    tasks += [lambda: research_duckduckgo(f"site:threads.net {niche} 2025", 4)]
+    tasks += [lambda: research_duckduckgo(f"{niche} went viral on social media this week", 5)]
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
+    with ThreadPoolExecutor(max_workers=12) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
             try: results += fut.result(timeout=15)
             except Exception as e: logger.error(f"[Step4] {e}")
@@ -1880,32 +2068,62 @@ def ra_step5_youtube(state: NicheResearchState) -> dict:
 
 # ── Step 6: TikTok + Instagram + Short-Form Viral Content ────────────────────
 def ra_step6_shortform(state: NicheResearchState) -> dict:
-    logger.info("[ResearchAgent] STEP 6 — TikTok + Instagram + Short-Form Viral")
+    logger.info("[ResearchAgent] STEP 6 — TikTok + Instagram + Shorts + Pinterest + Social Aggregators")
     keywords = state["channel_keywords"]
     niche    = state["channel_niche"]
     kw0 = keywords[0] if keywords else niche
     kw1 = keywords[1] if len(keywords) > 1 else niche
-
-    shortform_queries = [
-        f"site:tiktok.com {niche} viral 2025",
-        f"tiktok {kw0} viral trend 2025",
-        f"tiktok {kw1} 1 million views 2025",
-        f"instagram reels {niche} viral 2025",
-        f"{niche} tiktok trend explained",
-        f"{kw0} short video going viral",
-        f"{niche} youtube shorts viral",
-        f"pinterest {niche} trending 2025",
-        f"{kw1} tiktok sound trending",
-    ]
+    kw2 = keywords[2] if len(keywords) > 2 else niche
 
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    tasks = [lambda q=q: research_tavily(q, 4) for q in shortform_queries]
-    tasks += [lambda: research_duckduckgo(f"tiktok {niche} viral 2025", 5)]
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try: results += fut.result(timeout=15)
+    # ── Use dedicated TikTok, Instagram, and social aggregator scrapers ────────
+    tasks = [
+        # Dedicated TikTok scraper (deep multi-query search)
+        ("TikTok-dedicated", lambda: research_tiktok_trending(niche, 8)),
+        ("TikTok-kw0",       lambda: research_tiktok_trending(kw0, 6)),
+        # Dedicated Instagram scraper (deep multi-query search)
+        ("IG-dedicated",     lambda: research_instagram_trending(niche, 8)),
+        ("IG-kw0",           lambda: research_instagram_trending(kw0, 6)),
+        # Cross-platform social aggregators
+        ("SocialAgg",        lambda: research_social_aggregators(niche, 8)),
+        ("SocialAgg-kw",     lambda: research_social_aggregators(kw0, 6)),
+    ]
+
+    # ── Additional Tavily queries for short-form content ───────────────────────
+    shortform_queries = [
+        f"site:tiktok.com {niche} viral 2025",
+        f"tiktok {kw0} viral trend this week",
+        f"tiktok {kw1} millions views 2025",
+        f"instagram reels {niche} viral this week 2025",
+        f"{niche} tiktok trend explained this week",
+        f"{kw0} short video going viral this week",
+        f"{niche} youtube shorts viral 2025",
+        f"pinterest {niche} trending 2025",
+        f"{kw1} tiktok sound trending now",
+        f"{niche} snapchat spotlight viral 2025",
+        f"{kw2} reels viral audio trend",
+        f"most viral {niche} tiktok this week",
+        f"instagram explore page {niche} trending",
+    ]
+    for q in shortform_queries:
+        tasks.append(("Tavily", lambda q=q: research_tavily(q, 4)))
+
+    # ── DuckDuckGo fallback queries ───────────────────────────────────────────
+    ddg_queries = [
+        f"tiktok {niche} viral 2025",
+        f"instagram reels {niche} viral 2025",
+        f"{niche} short form video viral this week",
+        f"youtube shorts {niche} trending 2025",
+    ]
+    for q in ddg_queries:
+        tasks.append(("DDG", lambda q=q: research_duckduckgo(q, 5)))
+
+    with ThreadPoolExecutor(max_workers=14) as ex:
+        future_map = {ex.submit(fn): name for name, fn in tasks}
+        for fut in as_completed(future_map):
+            try: results += fut.result(timeout=20)
             except Exception as e: logger.error(f"[Step6] {e}")
 
     seen, unique = set(), []
@@ -1913,7 +2131,7 @@ def ra_step6_shortform(state: NicheResearchState) -> dict:
         u = r.get("url", "")
         if u and u not in seen:
             seen.add(u); unique.append(r)
-    logger.info(f"[ResearchAgent] Step 6 found {len(unique)} short-form signals")
+    logger.info(f"[ResearchAgent] Step 6 found {len(unique)} short-form + social signals")
     return {"step6_shortform": unique}
 
 
@@ -2022,22 +2240,24 @@ def ra_aggregator(state: NicheResearchState) -> dict:
                 item["_step"] = label
                 all_sources.append(item)
 
-    # Priority sort: Trends > News > YouTube > Reddit > Blogs > Twitter > TikTok > Forums
+    # Priority sort: Balanced — social media platforms ranked equally with news
+    # This ensures TikTok, Instagram, Twitter signals aren't buried at the bottom
     step_priority = {
         "Google Trends": 0,
-        "Google/Bing News": 1,
-        "YouTube": 2,
-        "Reddit": 3,
-        "Niche Blogs": 4,
-        "X/Twitter": 5,
-        "TikTok/Reels": 6,
+        "TikTok/Reels": 1,   # Social media ranked HIGH — was 6, now 1
+        "X/Twitter": 2,      # Social media ranked HIGH — was 5, now 2
+        "Google/Bing News": 3,
+        "Reddit": 4,
+        "YouTube": 5,
+        "Niche Blogs": 6,
         "Forums": 7,
     }
     all_sources.sort(key=lambda x: step_priority.get(x.get("_step", ""), 9))
 
     # Build a more focused web_block with better structure
+    # Increased from 60 to 80 to ensure social media sources aren't cut off
     web_block_lines = []
-    for idx, r in enumerate(all_sources[:60], 1):  # Limit to 60 sources for token efficiency
+    for idx, r in enumerate(all_sources[:80], 1):  # Increased cap for social media coverage
         if r.get("url", "").startswith("http"):
             step = r.get('_step', 'Web')
             title = r.get('title', '')[:100]
@@ -2067,29 +2287,34 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
     # ── Compact but powerful system prompt ────────────────────────────────────
     system_prompt = (
         "You are an elite YouTube strategist. Generate 5 viral video ideas "
-        "backed by deep research across the entire internet.\n\n"
+        "backed by deep research across the entire internet — especially social media platforms.\n\n"
         f"Channel context: {custom_prompt[:300]}\n\n"
         "Your job: Analyze the research data below (from 8 diverse sources: "
-        "Google Trends, News, Reddit, Twitter/LinkedIn, YouTube, TikTok/Instagram, "
+        "Google Trends, News, Reddit, Twitter/X/Threads/Bluesky, YouTube, "
+        "TikTok/Instagram Reels/YouTube Shorts/Pinterest, "
         "Blogs/Academic, Forums/Communities) and identify the 5 BEST viral ideas.\n\n"
+        "SOCIAL MEDIA PRIORITY: Ideas inspired by viral TikTok videos, Instagram Reels, "
+        "Twitter/X threads, or cross-platform viral moments should be weighted HEAVILY. "
+        "Social media trends from the past 7 days are the STRONGEST signal of what will go viral next.\n\n"
         "Return ONLY this JSON:\n"
         '{"ideas":[{"rank":1,"viral_score":95,"title":"The Dark Secret About [Topic] That Changed Everything",'
         '"hook":"You won\'t believe what I found buried in the research...",'
         '"core_angle":"Expose a hidden truth using cross-platform research evidence",'
         '"why_trending":"[Specific recent event/study/viral moment from research data]",'
-        '"trend_sources":[{"platform":"Google News","title":"[Real title from research]","url":"[Real URL]"}],'
+        '"trend_sources":[{"platform":"TikTok","title":"[Real title from research]","url":"[Real URL]"}],'
         '"seo_keywords":["kw1","kw2","kw3"],'
         '"best_format":"Standard","risk_level":"Low",'
         '"description":"A [format] exposing [specific thing] based on [research sources]"}],'
-        '"trend_summary":"[What\'s dominating the research across all platforms]"}\n\n'
+        '"trend_summary":"[What\'s dominating the research across all platforms, especially social media]"}\n\n'
         "CRITICAL RULES:\n"
         "1. Titles must be YouTube-ready: 40-70 chars, attention-grabbing, NOT keywords\n"
         "2. GOOD: 'The Shocking Truth About Mind Control in 2026'\n"
         "3. BAD: 'mind control psychology'\n"
-        "4. why_trending MUST cite specific research (e.g., 'Reddit post with 12K upvotes', 'New NYT article', 'Viral TikTok')\n"
+        "4. why_trending MUST cite specific research (e.g., 'Viral TikTok with 5M views', 'Instagram Reel going viral', 'Reddit post with 12K upvotes', 'Trending on Twitter/X')\n"
         "5. Cite real URLs from the research data\n"
-        "6. Prioritize cross-platform trends (e.g., topic trending on both Reddit AND news)\n"
-        "7. Rank by viral potential based on research breadth and recency"
+        "6. Prioritize cross-platform trends (e.g., topic trending on TikTok AND Reddit AND news)\n"
+        "7. At least 2 of the 5 ideas MUST be directly inspired by social media viral content (TikTok, Instagram, Twitter)\n"
+        "8. Rank by viral potential based on research breadth, social media engagement signals, and recency (past 7 days ONLY)"
     )
 
     # ── Compact human prompt with research data ───────────────────────────────
@@ -2106,15 +2331,27 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
     }
     source_breakdown = "\n".join(f"  - {k}: {v} sources" for k, v in step_source_counts.items() if v > 0)
     
+    # Calculate social media coverage for emphasis
+    social_count = step_source_counts.get("TikTok/Reels", 0) + step_source_counts.get("X/Twitter", 0)
+    social_emphasis = (
+        f"\n\n⚡ SOCIAL MEDIA SIGNALS: {social_count} sources from TikTok/Instagram/Twitter/X. "
+        "These represent what's ACTUALLY going viral on social media RIGHT NOW. "
+        "Prioritize ideas inspired by these social signals over traditional news.\n"
+    ) if social_count > 0 else ""
+
     human_prompt = (
         f"NICHE: {niche}\n"
         f"KEYWORDS: {', '.join(keywords[:5])}\n"
         f"CHANNEL STYLE (recent uploads):\n{yt_style}\n\n"
-        f"RESEARCH BREAKDOWN BY PLATFORM:\n{source_breakdown}\n\n"
-        f"FULL RESEARCH DATA (all 8 sources combined):\n{web_block[:6000]}\n\n"
-        "CRITICAL: Each idea MUST cite sources from MULTIPLE platforms (not just Google Trends/News).\n"
-        "Prioritize cross-platform trends (e.g., topic on Reddit + News + YouTube).\n"
-        "Use the [Platform] labels in the research data to cite diverse sources.\n\n"
+        f"RESEARCH BREAKDOWN BY PLATFORM:\n{source_breakdown}\n"
+        f"{social_emphasis}\n"
+        f"FULL RESEARCH DATA (all 8 sources combined):\n{web_block[:7000]}\n\n"
+        "CRITICAL REQUIREMENTS:\n"
+        "- Each idea MUST cite sources from MULTIPLE platforms (not just Google Trends/News)\n"
+        "- At least 2 ideas must be inspired by social media viral content (TikTok, Instagram, Twitter/X)\n"
+        "- Prioritize cross-platform trends (e.g., topic on TikTok + Reddit + News)\n"
+        "- Use the [Platform] labels in the research data to cite diverse sources\n"
+        "- ONLY trends from the past 7 days\n\n"
         "Generate 5 best viral ideas. Return JSON only."
     )
 
@@ -2284,7 +2521,7 @@ def research_agent_route():
         "channel_keywords":     ["antigravity", "UAP", "zero point energy", ...],
         "custom_system_prompt": "<full researcher persona text>"   // optional
       }
-    Returns the 10 ranked video ideas + trend_summary + all_sources count.
+    Returns the 5 ranked video ideas + trend_summary + all_sources count.
     """
     data = request.get_json(force=True) or {}
 
@@ -2868,7 +3105,7 @@ def trending_ideas():
            - If 0 videos found in that window → fall back to last 10 uploads.
       2. If plain text → use as niche directly (no YouTube lookup).
       3. Run the full 8-step LangGraph research agent.
-      4. Return 10 ranked ideas + trend_summary + step_counts + channel info.
+      4. Return 5 ranked ideas + trend_summary + step_counts + channel info.
     """
     # Check required API keys
     groq_key = get_groq_api_key()
