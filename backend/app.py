@@ -2820,24 +2820,21 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
         f"- {r['title'][:80]}" for r in yt_sources[:5]
     ) or "No recent uploads found."
 
-    # ── Pull the dedicated social block (TikTok/Instagram, never truncated) ──
-    social_block = state.get("social_block", "")
-    other_block  = state.get("other_block", "")
+    # ── Build social_block directly from all_sources — guaranteed, no state key issues ──
+    all_src = state.get("all_sources", [])
+    social_sources_list = [s for s in all_src if s.get("_step") == "TikTok/Instagram Reels"]
+    other_sources_list  = [s for s in all_src if s.get("_step") != "TikTok/Instagram Reels"]
 
-    # If social_block is empty it means aggregator ran before the field was added
-    if not social_block:
-        social_sources = [s for s in state.get("all_sources", []) if s.get("_step") == "TikTok/Instagram Reels"]
-        social_block = "\n\n".join(
-            f"[{s.get('source','TikTok/IG')}] {s.get('title','')[:120]}\n   {s.get('snippet','')[:200]}\n   {s.get('url','')}"
-            for s in social_sources[:30] if s.get("url","").startswith("http")
-        ) or "None fetched."
-        other_sources = [s for s in state.get("all_sources", []) if s.get("_step") != "TikTok/Instagram Reels"]
-        other_block = "\n\n".join(
-            f"[{s.get('_step','Web')}] {s.get('title','')[:120]}\n   {s.get('snippet','')[:200]}\n   {s.get('url','')}"
-            for s in other_sources[:40] if s.get("url","").startswith("http")
-        ) or "None fetched."
+    def _fmt_src(s):
+        lbl = s.get("source","") or s.get("_step","Web")
+        if lbl in ("Tavily AI Search",): lbl = s.get("_step","Web")
+        return f"[{lbl}] {s.get('title','')[:120]}\n   {s.get('snippet','')[:200]}\n   {s.get('url','')}"
 
-    social_count = len([s for s in state.get("all_sources", []) if s.get("_step") == "TikTok/Instagram Reels"])
+    social_block = "\n\n".join(_fmt_src(s) for s in social_sources_list[:30] if s.get("url","").startswith("http")) or "None fetched."
+    other_block  = "\n\n".join(_fmt_src(s) for s in other_sources_list[:40]  if s.get("url","").startswith("http")) or "No other sources."
+    social_count = len(social_sources_list)
+
+    logger.info(f"[Synthesizer] social_block: {social_count} TikTok/IG sources | other: {len(other_sources_list)}")
 
     # ── System prompt — strict, no year hallucination ────────────────────────
     system_prompt = (
@@ -3114,6 +3111,8 @@ def research_agent_route():
         step8_forums=[],
         all_sources=[],
         web_block="",
+        social_block="",
+        other_block="",
         raw_ideas=[],
         final_ideas=[],
         trend_summary="",
@@ -3127,7 +3126,6 @@ def research_agent_route():
         trend_summary = result.get("trend_summary", "")
         all_sources   = result.get("all_sources", [])
 
-        # Step-level source counts for transparency (UPDATED ORDER)
         step_counts = {
             "step1_shortform": len(result.get("step1_shortform", [])),  # TikTok/Instagram FIRST
             "step2_youtube":   len(result.get("step2_youtube", [])),
@@ -3798,6 +3796,8 @@ def trending_ideas():
         step8_forums=[],
         all_sources=[],
         web_block="",
+        social_block="",
+        other_block="",
         raw_ideas=[],
         final_ideas=[],
         trend_summary="",
