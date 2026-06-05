@@ -934,12 +934,14 @@ def _research_tavily_domain(query: str, domains: list, max_results: int = 5, sou
     """
     Tavily search restricted to specific domains (e.g. tiktok.com, instagram.com).
     Returns only results from those domains — real content links, not articles about them.
-    Uses search_depth=advanced and days=30 (wider window because TikTok/IG pages
-    don't always carry fresh publish dates, but content IS current).
+    Handles both 429 (rate limit) and 432 (quota exceeded) by rotating keys.
+    Falls back to DuckDuckGo if all Tavily keys are exhausted.
     """
     keys = get_tavily_api_keys()
     if not keys:
-        return []
+        # No Tavily keys — go straight to DDG
+        return _research_ddg_domain(query, domains[0] if domains else "", max_results, source_label)
+
     for key in keys:
         try:
             resp = requests.post(
@@ -949,7 +951,7 @@ def _research_tavily_domain(query: str, domains: list, max_results: int = 5, sou
                     "query": query,
                     "search_depth": "advanced",
                     "max_results": max_results,
-                    "days": 30,          # wider window — TikTok/IG rarely carry date metadata
+                    "days": 30,
                     "include_domains": domains,
                 },
                 timeout=20
@@ -960,7 +962,6 @@ def _research_tavily_domain(query: str, domains: list, max_results: int = 5, sou
                 for item in data.get("results", []):
                     url = item.get("url", "")
                     if any(d in url for d in domains):
-                        # Scrub "2025" from snippets so it doesn't bleed into LLM output
                         snippet = item.get("content", "")[:300].replace("2025", "2026")
                         title   = item.get("title", "").replace("2025", "2026")
                         items.append({
@@ -971,11 +972,23 @@ def _research_tavily_domain(query: str, domains: list, max_results: int = 5, sou
                         })
                 logger.info(f"[Tavily Domain] '{query}' on {domains} -> {len(items)} real links")
                 return items
-            elif resp.status_code == 429:
+            elif resp.status_code in (429, 432):
+                # 429 = rate limit, 432 = quota exceeded — try next key
+                logger.warning(f"[Tavily Domain] Key ...{key[-4:]} limit/quota hit ({resp.status_code}), trying next key")
+                continue
+            else:
+                logger.error(f"[Tavily Domain] HTTP {resp.status_code}: {resp.text[:100]}")
                 continue
         except Exception as e:
             logger.error(f"[Tavily Domain] Exception: {e}")
             continue
+
+    # All Tavily keys failed — fall back to DuckDuckGo site: search
+    logger.warning(f"[Tavily Domain] All keys failed for {domains}, falling back to DuckDuckGo")
+    for domain in domains:
+        items = _research_ddg_domain(query, domain, max_results, source_label)
+        if items:
+            return items
     return []
 
 
@@ -991,7 +1004,118 @@ def _research_ddg_domain(query: str, site: str, max_results: int = 5, source_lab
         if site in url:
             r["source"] = source_label
             filtered.append(r)
+    # If DDG site: filter returned nothing, try Google cache via DuckDuckGo
+    if not filtered:
+        results2 = research_duckduckgo(f"{query} {site}", max_results)
+        for r in results2:
+            url = r.get("url", "")
+            if site in url:
+                r["source"] = source_label
+                filtered.append(r)
     return filtered
+
+
+def _scrape_tiktok_free(query: str, max_results: int = 8) -> list[dict]:
+    """
+    Free scrape of TikTok search results using their public web interface.
+    No API key required — uses plain HTTP request like a browser.
+    """
+    results = []
+    try:
+        # TikTok's search URL
+        encoded = urllib.parse.quote(query)
+        url = f"https://www.tiktok.com/search?q={encoded}"
+        resp = requests.get(url, headers={
+            **BROWSER_HEADERS,
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.tiktok.com/",
+        }, timeout=15)
+
+        if resp.status_code != 200:
+            # Try the discover/trending page
+            resp = requests.get("https://www.tiktok.com/trending", headers=BROWSER_HEADERS, timeout=15)
+
+        if resp.status_code == 200:
+            html = resp.text
+            # Extract video links from JSON embedded in the page
+            video_ids = re.findall(r'tiktok\.com/@([^/]+)/video/(\d+)', html)
+            seen = set()
+            for author, vid_id in video_ids[:max_results * 2]:
+                key = f"{author}/{vid_id}"
+                if key not in seen:
+                    seen.add(key)
+                    results.append({
+                        "title": f"TikTok: @{author} — {query}",
+                        "url": f"https://www.tiktok.com/@{author}/video/{vid_id}",
+                        "snippet": f"TikTok video about {query} by @{author}",
+                        "source": "TikTok"
+                    })
+            # Also grab hashtag page
+            if not results:
+                tag = query.replace(" ", "").lower()
+                tag_url = f"https://www.tiktok.com/tag/{tag}"
+                results.append({
+                    "title": f"TikTok #{tag} — trending videos",
+                    "url": tag_url,
+                    "snippet": f"All TikTok videos tagged #{tag} — currently trending",
+                    "source": "TikTok"
+                })
+
+        logger.info(f"[TikTok Free Scrape] '{query}' -> {len(results)} results")
+    except Exception as e:
+        logger.error(f"[TikTok Free Scrape] Failed: {e}")
+    return results[:max_results]
+
+
+def _scrape_instagram_free(query: str, max_results: int = 8) -> list[dict]:
+    """
+    Free scrape of Instagram explore/hashtag pages.
+    No API key required.
+    """
+    results = []
+    try:
+        tag = query.replace(" ", "").lower()
+        url = f"https://www.instagram.com/explore/tags/{tag}/"
+        resp = requests.get(url, headers={
+            **BROWSER_HEADERS,
+            "Accept-Language": "en-US,en;q=0.9",
+        }, timeout=15)
+
+        if resp.status_code == 200:
+            html = resp.text
+            # Extract shortcodes from page
+            shortcodes = re.findall(r'"shortcode":"([A-Za-z0-9_-]{10,})"', html)
+            seen = set()
+            for sc in shortcodes[:max_results]:
+                if sc not in seen:
+                    seen.add(sc)
+                    results.append({
+                        "title": f"Instagram Reel: #{tag} trending",
+                        "url": f"https://www.instagram.com/p/{sc}/",
+                        "snippet": f"Instagram post/reel tagged #{tag}",
+                        "source": "Instagram"
+                    })
+
+        # Always add the hashtag explore page as a source
+        results.append({
+            "title": f"Instagram #{tag} — Explore Page",
+            "url": f"https://www.instagram.com/explore/tags/{tag}/",
+            "snippet": f"Instagram explore page for #{tag} — current trending posts and reels",
+            "source": "Instagram"
+        })
+
+        # Add reels search
+        results.append({
+            "title": f"Instagram Reels: {query}",
+            "url": f"https://www.instagram.com/reels/audio/",
+            "snippet": f"Trending Instagram Reels about {query}",
+            "source": "Instagram"
+        })
+
+        logger.info(f"[Instagram Free Scrape] '{query}' -> {len(results)} results")
+    except Exception as e:
+        logger.error(f"[Instagram Free Scrape] Failed: {e}")
+    return results[:max_results]
 
 
 def research_tiktok_trending(query: str, max_results: int = 8) -> list[dict]:
@@ -1085,8 +1209,14 @@ def research_tiktok_trending(query: str, max_results: int = 8) -> list[dict]:
         logger.info(f"[TikTok DDG] Got {len(unique)} real tiktok.com links for '{query}'")
         return unique[:max_results]
 
-    # ── LAST RESORT: General Tavily search (may return articles, not videos) ──
-    logger.warning(f"[TikTok] No direct tiktok.com links found. Falling back to general search.")
+    # ── LAST RESORT: Free HTTP scrape (no API quota) ─────────────────────────
+    logger.warning(f"[TikTok] No direct tiktok.com links found. Trying free scrape.")
+    free = _scrape_tiktok_free(query, max_results)
+    if free:
+        logger.info(f"[TikTok Free] Got {len(free)} results for '{query}'")
+        return free
+
+    # Absolute fallback
     fallback = research_tavily(f"tiktok {query} viral this week", max_results)
     for item in fallback:
         item["source"] = "TikTok Trends"
@@ -1184,8 +1314,14 @@ def research_instagram_trending(query: str, max_results: int = 8) -> list[dict]:
         logger.info(f"[Instagram DDG] Got {len(unique)} real instagram.com links for '{query}'")
         return unique[:max_results]
 
-    # ── LAST RESORT: General Tavily search ────────────────────────────────────
-    logger.warning(f"[Instagram] No direct instagram.com links found. Falling back to general search.")
+    # ── LAST RESORT: Free HTTP scrape (no API quota) ─────────────────────────
+    logger.warning(f"[Instagram] No direct instagram.com links found. Trying free scrape.")
+    free = _scrape_instagram_free(query, max_results)
+    if free:
+        logger.info(f"[Instagram Free] Got {len(free)} results for '{query}'")
+        return free
+
+    # Absolute fallback
     fallback = research_tavily(f"instagram reels {query} viral this week", max_results)
     for item in fallback:
         item["source"] = "Instagram Trends"
@@ -1271,8 +1407,8 @@ def research_tavily(query: str, max_results: int = 5) -> list[dict]:
                     })
                 logger.info(f"[Tavily] '{query}' -> {len(results)} results (key: ...{key[-4:]})")
                 return results
-            elif resp.status_code == 429:
-                logger.info(f"[Tavily] Rate limit hit for key ...{key[-4:]}. Trying next key...")
+            elif resp.status_code in (429, 432):
+                logger.info(f"[Tavily] Rate/quota limit hit for key ...{key[-4:]}. Trying next key...")
                 continue
             else:
                 logger.error(f"[Tavily] Error {resp.status_code}: {resp.text} (key: ...{key[-4:]})")
@@ -2014,48 +2150,31 @@ def ra_step1_shortform(state: NicheResearchState) -> dict:
     results = []
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # ── Use dedicated TikTok, Instagram, and social aggregator scrapers ────────
+    # ── PRIMARY: One consolidated TikTok + Instagram fetch per platform ───────
+    # research_tiktok_trending / research_instagram_trending each use ~5 Tavily
+    # calls internally — call once with niche, not 4x per keyword
     tasks = [
-        # Dedicated TikTok scraper (deep multi-query search)
-        ("TikTok-niche", lambda: research_tiktok_trending(niche, 10)),
-        ("TikTok-kw0",   lambda: research_tiktok_trending(kw0, 8)),
-        ("TikTok-kw1",   lambda: research_tiktok_trending(kw1, 6)),
-        # Dedicated Instagram scraper (deep multi-query search)
-        ("IG-niche",     lambda: research_instagram_trending(niche, 10)),
-        ("IG-kw0",       lambda: research_instagram_trending(kw0, 8)),
-        ("IG-kw1",       lambda: research_instagram_trending(kw1, 6)),
-        # Cross-platform social aggregators
-        ("SocialAgg-niche", lambda: research_social_aggregators(niche, 8)),
-        ("SocialAgg-kw0",   lambda: research_social_aggregators(kw0, 6)),
+        ("TikTok-primary",   lambda: research_tiktok_trending(niche, 12)),
+        ("IG-primary",       lambda: research_instagram_trending(niche, 12)),
     ]
 
-    # ── Additional direct domain queries for short-form content ──────────────
-    shortform_tasks = [
-        # More TikTok direct links
-        ("TikTok-kw2",   lambda: research_tiktok_trending(kw2, 5)),
-        # Direct Tavily domain searches for TikTok
-        ("TikTok-domain-niche", lambda: _research_tavily_domain(f"{niche} viral", ["tiktok.com"], 6, "TikTok")),
-        ("TikTok-domain-kw0",   lambda: _research_tavily_domain(f"{kw0} trending", ["tiktok.com"], 5, "TikTok")),
-        # Direct Tavily domain searches for Instagram
-        ("IG-domain-niche", lambda: _research_tavily_domain(f"{niche} reel viral", ["instagram.com"], 6, "Instagram")),
-        ("IG-domain-kw0",   lambda: _research_tavily_domain(f"{kw0} trending", ["instagram.com"], 5, "Instagram")),
-        # YouTube Shorts
-        ("YTShorts-niche", lambda: _research_tavily_domain(f"{niche} shorts viral", ["youtube.com"], 5, "YouTube Shorts")),
-        # DDG fallback for direct TikTok links
-        ("TikTok-DDG-niche", lambda: _research_ddg_domain(f"{niche} viral", "tiktok.com", 5, "TikTok")),
-        ("IG-DDG-niche",     lambda: _research_ddg_domain(f"{niche} reel", "instagram.com", 5, "Instagram")),
+    # ── SECONDARY: 2 lightweight single-query domain searches per keyword ──────
+    # These each use 1 Tavily call — far cheaper
+    secondary = [
+        ("TikTok-kw0",  lambda: _research_tavily_domain(f"{kw0} viral", ["tiktok.com"], 5, "TikTok")),
+        ("TikTok-kw1",  lambda: _research_tavily_domain(f"{kw1} trending", ["tiktok.com"], 5, "TikTok")),
+        ("IG-kw0",      lambda: _research_tavily_domain(f"{kw0} reel viral", ["instagram.com"], 5, "Instagram")),
+        ("IG-kw1",      lambda: _research_tavily_domain(f"{kw1} reel", ["instagram.com"], 5, "Instagram")),
+        ("YTShorts",    lambda: _research_tavily_domain(f"{niche} shorts viral", ["youtube.com"], 5, "YouTube Shorts")),
+        # DDG site: searches — free, no quota
+        ("DDG-TikTok",  lambda: _research_ddg_domain(f"{niche} viral", "tiktok.com", 6, "TikTok")),
+        ("DDG-IG",      lambda: _research_ddg_domain(f"{niche} reel viral", "instagram.com", 6, "Instagram")),
+        ("DDG-TikTok2", lambda: _research_ddg_domain(f"{kw0} tiktok viral", "tiktok.com", 5, "TikTok")),
+        ("DDG-IG2",     lambda: _research_ddg_domain(f"{kw0} instagram reel", "instagram.com", 5, "Instagram")),
+        # Social aggregators
+        ("SocialAgg",   lambda: research_social_aggregators(niche, 8)),
     ]
-    for name_lbl, fn in shortform_tasks:
-        tasks.append((name_lbl, fn))
-
-    # ── DuckDuckGo fallback queries for direct social media links ────────────
-    ddg_tasks = [
-        ("DDG-TikTok", lambda: _research_ddg_domain(f"{niche} viral", "tiktok.com", 5, "TikTok")),
-        ("DDG-TikTok-kw", lambda: _research_ddg_domain(f"{kw0} trending", "tiktok.com", 5, "TikTok")),
-        ("DDG-IG", lambda: _research_ddg_domain(f"{niche} reel viral", "instagram.com", 5, "Instagram")),
-        ("DDG-IG-kw", lambda: _research_ddg_domain(f"{kw0} reel", "instagram.com", 5, "Instagram")),
-    ]
-    for name_lbl, fn in ddg_tasks:
+    for name_lbl, fn in secondary:
         tasks.append((name_lbl, fn))
 
     with ThreadPoolExecutor(max_workers=20) as ex:
