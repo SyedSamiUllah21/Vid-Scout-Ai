@@ -7,6 +7,17 @@ const NicheValidator = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
+  const [animatedScore, setAnimatedScore] = useState(0);
+
+  React.useEffect(() => {
+    if (results) {
+      setAnimatedScore(0);
+      const t = setTimeout(() => {
+        setAnimatedScore(results.viability_score);
+      }, 100);
+      return () => clearTimeout(t);
+    }
+  }, [results]);
 
   const generate = async () => {
     if (!niche) {
@@ -159,9 +170,9 @@ const NicheValidator = () => {
                       strokeWidth="10" 
                       fill="none" 
                       strokeDasharray="263.89" 
-                      strokeDashoffset={263.89 - (263.89 * results.viability_score) / 100}
+                      strokeDashoffset={263.89 - (263.89 * animatedScore) / 100}
                       strokeLinecap="round"
-                      style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+                      style={{ transition: 'stroke-dashoffset 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}
                     />
                   </svg>
                   <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>

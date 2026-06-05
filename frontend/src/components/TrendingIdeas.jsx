@@ -385,9 +385,23 @@ const TrendingIdeas = () => {
                   {/* Score circle */}
                   <div className="idea-score-section">
                     <div className="score-circle">
+                      <style>
+                        {`
+                          @keyframes fillCircle {
+                            0% { stroke-dashoffset: ${circumference}; }
+                          }
+                        `}
+                      </style>
                       <svg viewBox="0 0 65 65" style={{ filter: `drop-shadow(0 0 8px ${scoreColor}88)`, overflow: 'visible' }}>
                         <circle className="bg" cx="32.5" cy="32.5" r={radius} />
-                        <circle className="progress" cx="32.5" cy="32.5" r={radius} stroke={scoreColor} strokeDasharray={circumference} strokeDashoffset={dashoffset} />
+                        <circle 
+                          className="progress" 
+                          cx="32.5" cy="32.5" r={radius} 
+                          stroke={scoreColor} 
+                          strokeDasharray={circumference} 
+                          strokeDashoffset={dashoffset} 
+                          style={{ animation: 'fillCircle 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards' }}
+                        />
                       </svg>
                       <div className="score-value">
                         <span className="score-num" style={{ color: scoreColor, textShadow: `0 0 10px ${scoreColor}88` }}>{score}</span>
