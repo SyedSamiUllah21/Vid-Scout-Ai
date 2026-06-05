@@ -3222,52 +3222,88 @@ def views_trend():
             logger.error(f"[Views Trend] Failed to fetch channel stats: {c_err}")
 
         # Cost-efficient strategy: 
-        # 2. Fetch statistics and titles for all retrieved video IDs in a single batch (Cost: 1 unit)
+        # 2. Fetch statistics and titles for all retrieved video IDs in batches
         uploads_playlist_id = "UU" + channel_id[2:] if channel_id.startswith("UC") else ""
         video_ids = []
         
         if uploads_playlist_id:
             try:
-                pl_resp = youtube.playlistItems().list(
-                    part="contentDetails",
-                    playlistId=uploads_playlist_id,
-                    maxResults=50
-                ).execute()
-                video_ids = [item["contentDetails"]["videoId"] for item in pl_resp.get("items", []) if item.get("contentDetails", {}).get("videoId")]
+                next_page_token = None
+                while len(video_ids) < 250:
+                    pl_resp = youtube.playlistItems().list(
+                        part="contentDetails",
+                        playlistId=uploads_playlist_id,
+                        maxResults=50,
+                        pageToken=next_page_token
+                    ).execute()
+                    items = pl_resp.get("items", [])
+                    if not items:
+                        break
+                    
+                    for item in items:
+                        vid = item.get("contentDetails", {}).get("videoId")
+                        if vid and vid not in video_ids:
+                            video_ids.append(vid)
+                            
+                    next_page_token = pl_resp.get("nextPageToken")
+                    if not next_page_token:
+                        break
                 logger.info(f"[Views Trend][API] Found {len(video_ids)} recent videos via uploads playlist UU...")
             except Exception as pl_err:
                 logger.error(f"[Views Trend][API] Failed to fetch playlist items: {pl_err}")
 
-        # Fallback to search if uploads playlist fails or returns empty (Cost: 100 units)
+        # Fallback to search if uploads playlist fails or returns empty (Cost: 100 units per page)
         if not video_ids:
             logger.info(f"[Views Trend][API][Fallback] Using search fallback to find recent videos for channel {channel_id}")
-            search_resp = youtube.search().list(
-                part="id",
-                channelId=channel_id,
-                order="date",
-                type="video",
-                maxResults=50
-            ).execute()
-            video_ids = [item["id"]["videoId"] for item in search_resp.get("items", []) if item["id"].get("videoId")]
+            try:
+                next_page_token = None
+                while len(video_ids) < 250:
+                    search_resp = youtube.search().list(
+                        part="id",
+                        channelId=channel_id,
+                        order="date",
+                        type="video",
+                        maxResults=50,
+                        pageToken=next_page_token
+                    ).execute()
+                    items = search_resp.get("items", [])
+                    if not items:
+                        break
+                        
+                    for item in items:
+                        vid = item.get("id", {}).get("videoId")
+                        if vid and vid not in video_ids:
+                            video_ids.append(vid)
+                            
+                    next_page_token = search_resp.get("nextPageToken")
+                    if not next_page_token:
+                        break
+            except Exception as search_err:
+                logger.error(f"[Views Trend][API] Failed to fetch search items: {search_err}")
 
         if not video_ids:
             return jsonify({"error": "No videos found for this channel."}), 404
 
-        # Get detailed stats for each video in one batch (Cost: 1 unit)
-        videos_resp = youtube.videos().list(
-            part="snippet,statistics",
-            id=",".join(video_ids)
-        ).execute()
-
+        # Get detailed stats for each video in batches of 50 (Cost: 1 unit per batch)
         videos = []
-        for v in videos_resp.get("items", []):
-            pub_date = v["snippet"]["publishedAt"][:10]  # YYYY-MM-DD
-            view_count = int(v["statistics"].get("viewCount", 0))
-            videos.append({
-                "published": pub_date,
-                "views": view_count,
-                "title": v["snippet"]["title"]
-            })
+        for i in range(0, len(video_ids), 50):
+            batch_ids = video_ids[i:i+50]
+            try:
+                videos_resp = youtube.videos().list(
+                    part="snippet,statistics",
+                    id=",".join(batch_ids)
+                ).execute()
+                
+                for v in videos_resp.get("items", []):
+                    pub_date = v["snippet"]["publishedAt"][:10]  # YYYY-MM-DD
+                    view_count = int(v["statistics"].get("viewCount", 0))
+                    videos.append({
+                        "published": pub_date,
+                        "views": view_count,
+                        "title": v["snippet"]["title"]
+                    })
+            except Exception as v_err:
+                logger.error(f"[Views Trend][API] Failed to fetch video stats batch: {v_err}")
 
         # Sort by published date
         videos.sort(key=lambda x: x["published"])
