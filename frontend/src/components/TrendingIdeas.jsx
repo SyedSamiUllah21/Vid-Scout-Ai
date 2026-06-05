@@ -77,16 +77,16 @@ const TrendingIdeas = () => {
                 {results.window_label && <> &nbsp;·&nbsp; Window: <strong style={{ color: '#fff' }}>{results.window_label}</strong></>}
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexShrink: 0, whiteSpace: 'nowrap' }}>
               {ch.subscribers > 0 && (
                 <div style={{ textAlign: 'right' }}>
                   <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase' }}>Subscribers</span>
-                  <p style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>{ch.subscribers.toLocaleString()}</p>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginTop: '4px' }}>{ch.subscribers.toLocaleString()}</div>
                 </div>
               )}
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase' }}>Sources</span>
-                <p style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>{results.sources_used}</p>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginTop: '4px' }}>{results.sources_used}</div>
               </div>
             </div>
           </div>
