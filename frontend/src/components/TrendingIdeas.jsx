@@ -340,16 +340,28 @@ const TrendingIdeas = () => {
                               else if (u.includes('trends.google.com')) icon = 'fa-solid fa-arrow-trend-up';
                               else if (u.includes('algolia') || u.includes('ycombinator')) icon = 'fa-brands fa-hacker-news';
                               else if (src.platform) icon = 'fa-solid fa-globe';
+                              
+                              const isTT = u.includes('tiktok.com');
+                              const isIG = u.includes('instagram.com');
+                              const isSocial = isTT || isIG;
+                              
+                              const baseBg = isTT ? 'rgba(254,44,85,0.1)' : isIG ? 'rgba(225,48,108,0.1)' : 'rgba(168,85,247,0.05)';
+                              const hoverBg = isTT ? 'rgba(254,44,85,0.2)' : isIG ? 'rgba(225,48,108,0.2)' : 'rgba(168,85,247,0.15)';
+                              const baseColor = isTT ? '#fe2c55' : isIG ? '#e1306c' : '#a855f7';
+                              const borderColor = isTT ? 'rgba(254,44,85,0.3)' : isIG ? 'rgba(225,48,108,0.3)' : 'rgba(168,85,247,0.1)';
+                              
+                              const isConstructed = u.includes('/search') || u.includes('/tag');
+
                               return (
                                 <a key={i} href={u || '#'} target="_blank" rel="noopener noreferrer"
-                                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', color: '#a855f7', background: 'rgba(168,85,247,0.05)', padding: '4px 10px', borderRadius: '4px', textDecoration: 'none', border: '1px solid rgba(168,85,247,0.1)', maxWidth: '100%', transition: 'all 0.2s' }}
-                                  onMouseEnter={e => { e.currentTarget.style.background='rgba(168,85,247,0.15)'; e.currentTarget.style.color='#fff'; }}
-                                  onMouseLeave={e => { e.currentTarget.style.background='rgba(168,85,247,0.05)'; e.currentTarget.style.color='#a855f7'; }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', color: baseColor, background: baseBg, padding: '4px 10px', borderRadius: '4px', textDecoration: 'none', border: `1px solid ${borderColor}`, maxWidth: '100%', transition: 'all 0.2s', fontWeight: isSocial ? 600 : 400 }}
+                                  onMouseEnter={e => { e.currentTarget.style.background=hoverBg; e.currentTarget.style.color='#fff'; }}
+                                  onMouseLeave={e => { e.currentTarget.style.background=baseBg; e.currentTarget.style.color=baseColor; }}
                                   title={src.title || u}
                                 >
                                   <i className={icon}></i>
                                   <span style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {src.platform ? `[${src.platform}] ` : ''}{src.title || 'Source Link'}
+                                    {isConstructed && isSocial ? 'Browse Viral Content: ' : ''}{src.platform && !isSocial ? `[${src.platform}] ` : ''}{src.title || 'Source Link'}
                                   </span>
                                 </a>
                               );
