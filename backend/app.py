@@ -1541,15 +1541,19 @@ def validate_idea_with_google_trends(keywords: list) -> dict:
         # Take the most important 1-2 keywords
         kw_list = [k for k in keywords[:2] if k and len(k) > 2]
         if not kw_list:
-            return {"approved": None, "reason": "No valid keywords to test"}
+            return {"approved": None, "reason": "No valid keywords to test", "url": None}
 
         logger.info(f"[pytrends] Validating idea with keywords: {kw_list}")
         pytrends.build_payload(kw_list, cat=0, timeframe="now 7-d", geo="", gprop="youtube")
         
         # Get interest over time
         df = pytrends.interest_over_time()
+        
+        # Build the explore URL
+        explore_url = f"https://trends.google.com/trends/explore?q={urllib.parse.quote(kw_list[0])}&gprop=youtube"
+        
         if df.empty:
-            return {"approved": False, "reason": "No search volume in the last 7 days"}
+            return {"approved": False, "reason": "No search volume in the last 7 days", "url": explore_url}
             
         # Check if there is any non-zero interest
         for kw in kw_list:
@@ -1558,14 +1562,15 @@ def validate_idea_with_google_trends(keywords: list) -> dict:
                 if max_interest > 0:
                     return {
                         "approved": True, 
-                        "reason": f"Trending: '{kw}' has active search volume this week"
+                        "reason": f"Trending: '{kw}' has active search volume this week",
+                        "url": f"https://trends.google.com/trends/explore?q={urllib.parse.quote(kw)}&gprop=youtube"
                     }
         
-        return {"approved": False, "reason": "Zero search volume detected"}
+        return {"approved": False, "reason": "Zero search volume detected", "url": explore_url}
 
     except Exception as e:
         logger.warning(f"[pytrends] Validation error: {e}")
-        return {"approved": None, "reason": "Could not validate due to API limits"}
+        return {"approved": None, "reason": "Could not validate due to API limits", "url": None}
 
 
 def infer_channel_niche(channel_info: dict) -> dict:
@@ -2696,11 +2701,12 @@ def ra_synthesizer(state: NicheResearchState) -> dict:
         "CRITICAL RULES:\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "1. GROUND EVERY IDEA IN A REAL TREND: Each idea MUST be directly inspired by a specific trend, video type, or viral topic found in the research data (Section A). Do NOT invent trends.\n"
-        "2. TITLES MUST BE SPECIFIC & STORY-DRIVEN — NOT GENERIC:\n"
+        "2. TITLES MUST BE SPECIFIC & WIDELY APPLICABLE — NOT GENERIC:\n"
         "   ❌ BAD (too generic): 'Unlocking Dark Psychology Secrets' / 'Stoicism for Modern Life' / 'The Power of Zen'\n"
-        "   ✅ GOOD (specific + story): 'I Tested 3 Dark Psychology Tricks on My Boss for 30 Days' / 'The Stoic Habit Navy SEALs Use to Stay Calm Under Fire' / 'She Went from Anxious to Zen in 7 Days — Here's Her Exact Routine'\n"
-        "   GOOD titles are: personal, specific, result-driven, curiosity-triggering, based on a specific viral angle from the research.\n"
-        "3. NO GENERIC OPENERS: Never start a title with 'How To', 'Top', 'Ultimate Guide', 'The Power of', '[Niche] for Beginners', '[Niche] Secrets'.\n"
+        "   ❌ BAD (first person): 'I Tested 3 Tricks' / 'My Journey to Stoicism' (DO NOT use 'I', 'My', 'Me')\n"
+        "   ✅ GOOD (specific + universal): 'The Dark Psychology Trick Navy SEALs Use to Stay Calm' / 'How 30 Days of Stoicism Changes the Brain' / 'The Zen Routine That Cures Anxiety in 7 Days'\n"
+        "   GOOD titles are: specific, result-driven, curiosity-triggering, objectively framed (3rd person), based on a specific viral angle from the research.\n"
+        "3. NO GENERIC OPENERS: Never start a title with 'Top', 'Ultimate Guide', 'The Power of', '[Niche] for Beginners', '[Niche] Secrets'.\n"
         "4. CITE SOCIAL LINKS: Each idea's trend_sources MUST include at least 1 TikTok or Instagram URL from Section A.\n"
         "5. WHY_TRENDING: Must name the SPECIFIC TikTok/Instagram trend or viral angle that inspired this idea (e.g. 'TikTok creators doing 30-day stoicism challenges are getting 2-5M views').\n"
         "6. YEAR: Never write '2025'. Use '2026' or no year.\n"
@@ -2920,6 +2926,20 @@ def ra_formatter(state: NicheResearchState) -> dict:
                 res = fut.result(timeout=15)
                 idea["trends_approved"] = res.get("approved")
                 idea["trends_reason"]   = res.get("reason", "")
+                
+                # Append the Google Trends link to the sources array so it's always visible
+                url = res.get("url")
+                if url:
+                    # Make sure sources is a list
+                    if not isinstance(idea.get("sources"), list):
+                        idea["sources"] = []
+                    idea["sources"].append({
+                        "title": f"Google Trends Validation for '{idea['seo_keywords'][0]}'",
+                        "url": url,
+                        "platform": "Google Trends",
+                        "source": "Google Trends"
+                    })
+                    
             except Exception as e:
                 logger.error(f"[ResearchAgent] Idea validation failed: {e}")
                 idea["trends_approved"] = None

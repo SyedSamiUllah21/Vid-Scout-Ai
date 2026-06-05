@@ -251,6 +251,11 @@ const TrendingIdeas = () => {
                             <i className="fa-solid fa-check-circle"></i> Trends Approved
                           </span>
                         )}
+                        {idea.trends_approved === false && (
+                          <span title={idea.trends_reason || "No search volume detected on Google Trends recently"} style={{ background: 'rgba(156,163,175,0.1)', border: '1px solid rgba(156,163,175,0.25)', color: '#9ca3af', fontSize: '0.67rem', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '5px', cursor: 'help' }}>
+                            <i className="fa-solid fa-circle-xmark"></i> Not Trending on Google
+                          </span>
+                        )}
                         {idea.best_format && (
                           <span style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', color: '#818cf8', fontSize: '0.67rem', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <i className={formatIcon(idea.best_format)}></i> {idea.best_format}
