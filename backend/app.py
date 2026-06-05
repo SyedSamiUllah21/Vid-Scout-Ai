@@ -1529,6 +1529,44 @@ def research_google_trends_pytrends(keywords: list, topic: str = "") -> list[dic
         logger.error(f"[pytrends] FAILED: {e}")
     return results
 
+def validate_idea_with_google_trends(keywords: list) -> dict:
+    """
+    Validates if an idea has >0 search momentum on Google Trends in the past 7 days.
+    Returns: {"approved": bool, "reason": str}
+    """
+    try:
+        from pytrends.request import TrendReq
+        pytrends = TrendReq(hl="en-US", tz=420, timeout=(10, 25))
+        
+        # Take the most important 1-2 keywords
+        kw_list = [k for k in keywords[:2] if k and len(k) > 2]
+        if not kw_list:
+            return {"approved": None, "reason": "No valid keywords to test"}
+
+        logger.info(f"[pytrends] Validating idea with keywords: {kw_list}")
+        pytrends.build_payload(kw_list, cat=0, timeframe="now 7-d", geo="", gprop="youtube")
+        
+        # Get interest over time
+        df = pytrends.interest_over_time()
+        if df.empty:
+            return {"approved": False, "reason": "No search volume in the last 7 days"}
+            
+        # Check if there is any non-zero interest
+        for kw in kw_list:
+            if kw in df.columns:
+                max_interest = df[kw].max()
+                if max_interest > 0:
+                    return {
+                        "approved": True, 
+                        "reason": f"Trending: '{kw}' has active search volume this week"
+                    }
+        
+        return {"approved": False, "reason": "Zero search volume detected"}
+
+    except Exception as e:
+        logger.warning(f"[pytrends] Validation error: {e}")
+        return {"approved": None, "reason": "Could not validate due to API limits"}
+
 
 def infer_channel_niche(channel_info: dict) -> dict:
     """
@@ -2865,7 +2903,27 @@ def ra_formatter(state: NicheResearchState) -> dict:
             "tags":          idea.get("tags", idea.get("seo_keywords", [])[:4]),
             "sources":       idea.get("sources", []),
             "trend_sources": idea.get("trend_sources", []),
+            "trends_approved": None,
+            "trends_reason": "Validation pending",
         })
+
+    # Run Google Trends validation concurrently
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        future_to_idea = {
+            ex.submit(validate_idea_with_google_trends, idea["seo_keywords"]): idea
+            for idea in final if idea["seo_keywords"]
+        }
+        for fut in as_completed(future_to_idea):
+            idea = future_to_idea[fut]
+            try:
+                res = fut.result(timeout=15)
+                idea["trends_approved"] = res.get("approved")
+                idea["trends_reason"]   = res.get("reason", "")
+            except Exception as e:
+                logger.error(f"[ResearchAgent] Idea validation failed: {e}")
+                idea["trends_approved"] = None
+                idea["trends_reason"]   = "Validation failed/timeout"
 
     return {"final_ideas": final}
 

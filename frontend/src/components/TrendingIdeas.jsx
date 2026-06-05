@@ -246,6 +246,11 @@ const TrendingIdeas = () => {
                     <div className="idea-header-row">
                       <h2>{idea.title}</h2>
                       <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
+                        {idea.trends_approved === true && (
+                          <span title={idea.trends_reason || "Verified on Google Trends"} style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e', fontSize: '0.67rem', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '5px', cursor: 'help' }}>
+                            <i className="fa-solid fa-check-circle"></i> Trends Approved
+                          </span>
+                        )}
                         {idea.best_format && (
                           <span style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', color: '#818cf8', fontSize: '0.67rem', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <i className={formatIcon(idea.best_format)}></i> {idea.best_format}
