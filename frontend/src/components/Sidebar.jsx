@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const Sidebar = ({ activeView, setActiveView, isSidebarOpen, setIsSidebarOpen }) => {
+  const [showBrokieModal, setShowBrokieModal] = useState(false);
+
   const navItems = [
     { id: 'home', icon: 'fa-house', label: 'Home' },
     { id: 'view-channel', icon: 'fa-chart-simple', label: 'Channel Analyzer' },
@@ -50,7 +52,9 @@ const Sidebar = ({ activeView, setActiveView, isSidebarOpen, setIsSidebarOpen })
         </nav>
 
         <div style={{ padding: '16px 14px', marginTop: 'auto' }}>
-          <div style={{ 
+          <div 
+            onClick={() => setShowBrokieModal(true)}
+            style={{ 
             background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(255, 42, 42, 0.1))', 
             border: '1px solid rgba(168, 85, 247, 0.4)', 
             borderRadius: '10px', 
@@ -70,6 +74,77 @@ const Sidebar = ({ activeView, setActiveView, isSidebarOpen, setIsSidebarOpen })
           </div>
         </div>
       </div>
+
+      {showBrokieModal && (
+        <div 
+          onClick={() => setShowBrokieModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(12px)',
+            zIndex: 999999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer'
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#0f0f13',
+              padding: '50px 60px',
+              borderRadius: '24px',
+              border: '2px solid #ff2a2a',
+              boxShadow: '0 0 50px rgba(255, 42, 42, 0.5), inset 0 0 20px rgba(255, 42, 42, 0.2)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '15px',
+              alignItems: 'center',
+              transform: 'scale(1)',
+              animation: 'popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards'
+            }}
+          >
+            <style>
+              {`
+                @keyframes popIn {
+                  0% { transform: scale(0.8); opacity: 0; }
+                  100% { transform: scale(1); opacity: 1; }
+                }
+              `}
+            </style>
+            <i className="fa-solid fa-skull" style={{ fontSize: '3rem', color: '#ff2a2a', marginBottom: '10px' }}></i>
+            <h2 style={{ color: '#fff', fontSize: '2.8rem', margin: 0, fontWeight: '900', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              Shutt up Brokie
+            </h2>
+            <p style={{ color: '#a855f7', fontSize: '1.3rem', margin: 0, fontWeight: '700' }}>
+              Use it for free
+            </p>
+            <button 
+              onClick={() => setShowBrokieModal(false)}
+              style={{
+                marginTop: '20px',
+                padding: '12px 30px',
+                background: 'linear-gradient(90deg, #ff2a2a, #a855f7)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '50px',
+                fontWeight: 'bold',
+                fontSize: '1.1rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                boxShadow: '0 4px 15px rgba(255, 42, 42, 0.3)'
+              }}
+              onMouseOver={(e) => e.target.style.transform = 'scale(1.05)'}
+              onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+            >
+              Okay 😢
+            </button>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };
