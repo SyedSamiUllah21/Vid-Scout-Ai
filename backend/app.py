@@ -2074,6 +2074,44 @@ def rate_ideas_node(ideas: list[dict]) -> list[dict]:
 
 def explore_keyword_node(keyword: str) -> dict:
     """Perform keyword research and generate related keywords, volume, and difficulty."""
+    import requests
+    import urllib.parse
+    
+    # 1. Fetch exact autocomplete suggestions
+    autocomplete_url = f"http://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q={urllib.parse.quote(keyword)}"
+    try:
+        ac_res = requests.get(autocomplete_url, timeout=5)
+        suggestions = ac_res.json()[1][:10] if len(ac_res.json()) > 1 else []
+    except Exception as e:
+        logger.error(f"[KeywordExplore] Autocomplete failed: {e}")
+        suggestions = []
+
+    # 2. Fetch Real Search Stats using YouTube API
+    yt_key = get_youtube_api_key()
+    total_results = "Unknown"
+    avg_views = "Unknown"
+    
+    if yt_key:
+        try:
+            from googleapiclient.discovery import build
+            youtube = build("youtube", "v3", developerKey=yt_key)
+            search_req = youtube.search().list(q=keyword, part="snippet", type="video", maxResults=5)
+            search_res = search_req.execute()
+            
+            total_results = search_res.get("pageInfo", {}).get("totalResults", "Unknown")
+            
+            video_ids = [item["id"]["videoId"] for item in search_res.get("items", []) if "id" in item and "videoId" in item["id"]]
+            if video_ids:
+                stats_req = youtube.videos().list(id=",".join(video_ids), part="statistics")
+                stats_res = stats_req.execute()
+                views = [int(item["statistics"]["viewCount"]) for item in stats_res.get("items", []) if "viewCount" in item.get("statistics", {})]
+                if views:
+                    avg_views = int(sum(views) / len(views))
+        except Exception as e:
+            logger.error(f"[KeywordExplore] YouTube API failed: {e}")
+
+    real_data_block = f"Real YouTube Autocomplete Suggestions:\n{', '.join(suggestions) if suggestions else 'None found.'}\n\nSeed Keyword '{keyword}' Search Stats:\n- Total YouTube Search Results (Proxy for Competition): {total_results}\n- Average Views of Top 5 Videos (Proxy for Search Volume): {avg_views}"
+
     all_sources = deep_research(keyword, "30d")
     
     web_block = "\n".join(
@@ -2107,7 +2145,7 @@ def explore_keyword_node(keyword: str) -> dict:
         "}"
     )
     
-    human_prompt = f"Seed Keyword: {keyword}\n\nRecent Research:\n{web_block[:1500]}"
+    human_prompt = f"Seed Keyword: {keyword}\n\nRecent Research:\n{web_block[:1000]}\n\nREAL YOUTUBE DATA:\n{real_data_block}\n\nINSTRUCTIONS:\nUse the exact Autocomplete Suggestions above to populate the 'related_keywords' array. Use the Total Results and Average Views data to ground your volume, competition, and difficulty scores."
     
     try:
         content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.5, max_tokens=1000)
@@ -3352,151 +3390,51 @@ def channel_insights():
                 "color": colors[i]
             })
             
-        # Build content distribution using multi-word phrase extraction
+        # Build content distribution using LLM thematic clustering
         content_distribution = []
         if videos:
-            import re as _re
-            from collections import Counter, defaultdict
+            titles = [v['title'] for v in videos]
+            system_prompt = (
+                "You are an expert content analyst. Analyze the following list of YouTube video titles and categorize them into 3 to 5 high-level, meaningful thematic topics (e.g., 'True Crime', 'Tutorials', 'Internet Mysteries', 'Vlogs').\n"
+                "Do NOT use simple individual words unless they represent a clear genre. Group the videos by these themes.\n"
+                "Return EXACTLY a JSON array of objects, where each object has a 'name' (the topic/theme string) and a 'count' (number of videos that fall into this theme).\n"
+                "The sum of counts should roughly equal the total number of titles provided, but it's okay if some don't fit perfectly. Just pick the dominant themes.\n"
+                "Return only raw JSON. Example: [{\"name\": \"Tech Reviews\", \"count\": 12}, {\"name\": \"Tutorials\", \"count\": 5}]"
+            )
+            human_prompt = f"Total Videos: {len(titles)}\nTitles:\n" + "\n".join(f"- {t}" for t in titles[:50])
             
-            # Expanded stop words list
-            stop_words = {
-                'the','a','an','and','or','but','in','on','at','to','for','of','with',
-                'is','are','was','were','be','been','being','have','has','had','do',
-                'does','did','will','would','could','should','may','might','i','my',
-                'you','your','we','our','they','their','it','its','this','that','these',
-                'those','how','why','what','when','where','who','which','if','so','as',
-                'by','from','up','about','into','through','during','before','after',
-                'above','below','between','out','off','over','under','again','then',
-                'once','here','there','all','both','each','few','more','most','other',
-                'some','such','no','not','only','same','than','too','very','just',
-                'can','now','new','get','got','make','made','one','two','three','vs',
-                'part','full','ep','episode','ft','feat','official','video','youtube',
-                '2024','2025','2026','|','–','—','using','every','best','top','things',
-                'need','know','watch','see','look','like','really','way','much','many',
-                'guide','tutorial','tips','tricks','learn','show','tell','find','help',
-            }
-            
-            # Extract bigrams and trigrams (multi-word phrases) from all titles
-            all_bigrams = []
-            all_trigrams = []
-            all_words = []
-            
-            for v in videos:
-                title_lower = v['title'].lower()
-                words = _re.findall(r"[a-zA-Z]{3,}", title_lower)
-                words = [w for w in words if w not in stop_words]
-                
-                # Store single words
-                all_words.extend(words)
-                
-                # Create bigrams (2-word phrases)
-                for i in range(len(words) - 1):
-                    bigram = f"{words[i]} {words[i+1]}"
-                    all_bigrams.append(bigram)
-                
-                # Create trigrams (3-word phrases)
-                for i in range(len(words) - 2):
-                    trigram = f"{words[i]} {words[i+1]} {words[i+2]}"
-                    all_trigrams.append(trigram)
-            
-            # Count phrase frequencies
-            trigram_counts = Counter(all_trigrams)
-            bigram_counts = Counter(all_bigrams)
-            word_counts = Counter(all_words)
-            
-            # Prioritize multi-word phrases that appear multiple times
-            candidate_phrases = []
-            
-            # Add trigrams that appear at least 2 times
-            for phrase, count in trigram_counts.most_common(20):
-                if count >= 2:
-                    candidate_phrases.append((phrase, count, 3))  # weight=3 for trigrams
-            
-            # Add bigrams that appear at least 3 times
-            for phrase, count in bigram_counts.most_common(20):
-                if count >= 3:
-                    candidate_phrases.append((phrase, count, 2))  # weight=2 for bigrams
-            
-            # Add single words that appear at least 5 times (as fallback)
-            for word, count in word_counts.most_common(15):
-                if count >= 5:
-                    candidate_phrases.append((word, count, 1))  # weight=1 for single words
-            
-            # Sort by (count * weight) to prioritize meaningful multi-word phrases
-            candidate_phrases.sort(key=lambda x: x[1] * x[2], reverse=True)
-            
-            # Take top candidates
-            top_phrases = [p[0] for p in candidate_phrases[:20]]
-            
-            if len(top_phrases) >= 3:
-                # Assign each video to a category based on phrase matching
-                video_categories = defaultdict(list)
-                
-                for v in videos:
-                    title_lower = v['title'].lower()
-                    matched = False
-                    
-                    # Try to match with phrases (prioritize longer phrases)
-                    for phrase in top_phrases:
-                        phrase_words = phrase.split()
-                        # Check if all words in phrase appear in title
-                        if all(word in title_lower for word in phrase_words):
-                            video_categories[phrase].append(v)
-                            matched = True
-                            break
-                
-                # Sort categories by video count
-                sorted_cats = sorted(video_categories.items(), key=lambda x: len(x[1]), reverse=True)
-                
-                # Take top 5 categories
-                top_5_cats = sorted_cats[:5]
-                
-                # Calculate real percentages
-                total_videos = len(videos)
-                distribution = []
-                
-                for phrase, vid_list in top_5_cats:
-                    count = len(vid_list)
-                    percentage = round((count / total_videos) * 100)
-                    
-                    # Create proper category name (title case)
-                    words = phrase.split()
-                    category_name = " ".join([w.capitalize() for w in words])
-                    
-                    distribution.append({
-                        "name": category_name,
-                        "value": percentage,
-                        "count": count
-                    })
-                
-                # Normalize to exactly 100%
-                if distribution:
-                    total_pct = sum(d['value'] for d in distribution)
-                    if total_pct != 100:
-                        diff = 100 - total_pct
-                        distribution[0]['value'] += diff
-                    
-                    # Assign colors
-                    for i, item in enumerate(distribution):
-                        item["color"] = colors[i % len(colors)]
-                    
-                    content_distribution = distribution
-            
-            # Fallback: use top single words
-            if not content_distribution:
-                top_5_words = [w for w, c in word_counts.most_common(5) if c >= 2]
-                if top_5_words:
-                    per = 100 // len(top_5_words)
-                    remainder = 100 - per * len(top_5_words)
-                    content_distribution = [
-                        {
-                            "name": f"{w.capitalize()} Related",
-                            "value": per + (remainder if i == 0 else 0),
-                            "color": colors[i % len(colors)]
-                        }
-                        for i, w in enumerate(top_5_words)
-                    ]
-        
+            try:
+                content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.3, max_tokens=500)
+                result = parse_llm_json(content, context="content_distribution")
+                if isinstance(result, list) and result:
+                    # Normalize into percentages and add colors
+                    total_count = sum(item.get("count", 0) for item in result)
+                    if total_count > 0:
+                        distribution = []
+                        for item in result:
+                            count = item.get("count", 0)
+                            if count > 0:
+                                percentage = round((count / total_count) * 100)
+                                distribution.append({
+                                    "name": str(item.get("name", "Unknown")).title(),
+                                    "value": percentage,
+                                    "count": count
+                                })
+                        
+                        # Normalize to exactly 100%
+                        if distribution:
+                            distribution.sort(key=lambda x: x["value"], reverse=True)
+                            total_pct = sum(d["value"] for d in distribution)
+                            if total_pct != 100:
+                                distribution[0]["value"] += (100 - total_pct)
+                                
+                            for i, item in enumerate(distribution):
+                                item["color"] = colors[i % len(colors)]
+                            
+                            content_distribution = distribution
+            except Exception as e:
+                logger.error(f"[Views Trend] Failed to generate thematic distribution: {e}")
+
         if not content_distribution:
             content_distribution = [{"name": "Content Analysis Unavailable", "value": 100, "color": "#00d2ff"}]
 

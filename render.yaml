@@ -10,4 +10,6 @@ services:
         value: production
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/.cache/ms-playwright
+      - key: PYTHON_VERSION
+        value: 3.11.0
     autoDeploy: true
