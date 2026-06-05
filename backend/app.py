@@ -2156,6 +2156,64 @@ def explore_keyword_node(keyword: str) -> dict:
 
 def validate_niche_node(niche: str) -> dict:
     """Evaluate a niche for YouTube viability."""
+    from googleapiclient.discovery import build
+    
+    # 1. Fetch real YouTube Data
+    yt_stats_block = ""
+    yt_key = get_youtube_api_key()
+    if yt_key:
+        try:
+            youtube = build("youtube", "v3", developerKey=yt_key)
+            # Search for top videos in this niche
+            search_resp = youtube.search().list(
+                part="id,snippet",
+                q=niche,
+                type="video",
+                order="relevance",
+                maxResults=10
+            ).execute()
+            
+            video_ids = [item["id"]["videoId"] for item in search_resp.get("items", []) if "videoId" in item["id"]]
+            
+            if video_ids:
+                videos_resp = youtube.videos().list(
+                    part="statistics,snippet",
+                    id=",".join(video_ids)
+                ).execute()
+                
+                total_views = 0
+                total_likes = 0
+                videos_counted = 0
+                
+                recent_videos = []
+                
+                for v in videos_resp.get("items", []):
+                    stats = v.get("statistics", {})
+                    snip = v.get("snippet", {})
+                    views = int(stats.get("viewCount", 0))
+                    likes = int(stats.get("likeCount", 0))
+                    
+                    total_views += views
+                    total_likes += likes
+                    videos_counted += 1
+                    
+                    recent_videos.append(f"- {snip.get('title', '')} ({views:,} views)")
+                
+                if videos_counted > 0:
+                    avg_views = total_views // videos_counted
+                    avg_likes = total_likes // videos_counted
+                    
+                    yt_stats_block = (
+                        f"REAL YOUTUBE DATA FOR '{niche}':\n"
+                        f"- Average Views (Top 10): {avg_views:,}\n"
+                        f"- Average Likes (Top 10): {avg_likes:,}\n"
+                        f"- Top Recent Videos:\n" + "\n".join(recent_videos[:5])
+                    )
+        except Exception as e:
+            logger.error(f"[validate_niche_node] YouTube API failed: {e}")
+            pass
+
+    # 2. Fetch web research
     all_sources = deep_research(niche, "90d")
     
     web_block = "\n".join(
@@ -2165,6 +2223,8 @@ def validate_niche_node(niche: str) -> dict:
 
     system_prompt = (
         "You are an expert YouTube Channel Strategist. Evaluate the viability of a proposed channel niche.\n"
+        "You are provided with REAL YOUTUBE STATISTICS (average views, likes, top videos) and recent web research.\n"
+        "Use this hard data to mathematically ground your 1-100 scores. For example, if average views are extremely high, Market Demand should be high. If top videos have millions of views, Viability is high.\n"
         "Return ONLY a JSON object with this exact schema (no markdown formatting, no backticks):\n"
         "{\n"
         '  "viability_score": number 1-100,\n'
@@ -2177,13 +2237,13 @@ def validate_niche_node(niche: str) -> dict:
         '  "monetization_potential_score": number 1-100,\n'
         '  "audience_engagement_score": number 1-100,\n'
         '  "content_longevity_score": number 1-100,\n'
-        '  "pros": ["detailed pro 1", "detailed pro 2", "detailed pro 3", "detailed pro 4", "detailed pro 5"],\n'
-        '  "cons": ["detailed con 1", "detailed con 2", "detailed con 3", "detailed con 4", "detailed con 5"],\n'
-        '  "verdict": "1-2 sentence final recommendation"\n'
+        '  "pros": ["detailed pro 1 based on real data", "detailed pro 2", "detailed pro 3", "detailed pro 4", "detailed pro 5"],\n'
+        '  "cons": ["detailed con 1 based on real data", "detailed con 2", "detailed con 3", "detailed con 4", "detailed con 5"],\n'
+        '  "verdict": "1-2 sentence final recommendation directly referencing the real average views and demand."\n'
         "}"
     )
     
-    human_prompt = f"Proposed Niche: {niche}\n\nRecent Market Research:\n{web_block[:1500]}"
+    human_prompt = f"Proposed Niche: {niche}\n\n{yt_stats_block}\n\nRecent Market Research:\n{web_block[:1500]}"
     
     try:
         content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.5, max_tokens=1000)
