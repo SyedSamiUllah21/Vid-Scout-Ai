@@ -4127,7 +4127,7 @@ def analyze_thumbnail():
     if not openrouter_key:
         return jsonify({"error": "OpenRouter API Key is missing."}), 400
 
-    model = "google/gemini-2.5-flash"
+    model = "openai/gpt-4o-mini"
 
     if "base64," in image_base64:
         image_base64 = image_base64.split("base64,")[1]
