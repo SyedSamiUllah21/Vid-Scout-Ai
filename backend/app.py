@@ -3190,8 +3190,8 @@ def research_agent_route():
 @limiter.limit("10 per minute")
 def views_trend():
     """Fetch real video data from YouTube API and return daily view aggregates."""
-    yt_key = get_youtube_api_key()
-    if not yt_key:
+    yt_keys = get_youtube_api_keys()
+    if not yt_keys:
         return jsonify({"error": "YouTube API Key missing."}), 400
 
     data = request.get_json(force=True)
@@ -3199,7 +3199,9 @@ def views_trend():
     if not channel_id:
         return jsonify({"error": "channel_id is required."}), 400
 
-    try:
+    last_err = None
+    for key_idx, yt_key in enumerate(yt_keys, 1):
+        try:
         youtube = build("youtube", "v3", developerKey=yt_key)
 
         # 1. Fetch channel stats to establish a baseline for unaccounted views
@@ -3412,8 +3414,8 @@ def views_trend():
 @app.route("/api/channel-insights", methods=["POST"])
 @limiter.limit("10 per minute")
 def channel_insights():
-    yt_key = get_youtube_api_key()
-    if not yt_key:
+    yt_keys = get_youtube_api_keys()
+    if not yt_keys:
         return jsonify({"error": "YouTube API Key missing."}), 400
 
     data = request.get_json(force=True)
@@ -3423,162 +3425,172 @@ def channel_insights():
     if not channel_id.startswith("UC") or len(channel_id) < 20:
         return jsonify({"error": "Invalid channel_id format. Expected a YouTube channel ID starting with 'UC'."}), 400
 
-    try:
-        youtube = build("youtube", "v3", developerKey=yt_key)
+    last_err = None
+    for key_idx, yt_key in enumerate(yt_keys, 1):
+        try:
+            youtube = build("youtube", "v3", developerKey=yt_key)
 
-        uploads_playlist_id = "UU" + channel_id[2:] if channel_id.startswith("UC") else ""
-        video_ids = []
-        
-        if uploads_playlist_id:
-            try:
-                pl_resp = youtube.playlistItems().list(
-                    part="contentDetails",
-                    playlistId=uploads_playlist_id,
+            uploads_playlist_id = "UU" + channel_id[2:] if channel_id.startswith("UC") else ""
+            video_ids = []
+            
+            if uploads_playlist_id:
+                try:
+                    pl_resp = youtube.playlistItems().list(
+                        part="contentDetails",
+                        playlistId=uploads_playlist_id,
+                        maxResults=50
+                    ).execute()
+                    video_ids = [item["contentDetails"]["videoId"] for item in pl_resp.get("items", []) if item.get("contentDetails", {}).get("videoId")]
+                except Exception as pl_err:
+                    pass
+
+            if not video_ids:
+                search_resp = youtube.search().list(
+                    part="id",
+                    channelId=channel_id,
+                    order="date",
+                    type="video",
                     maxResults=50
                 ).execute()
-                video_ids = [item["contentDetails"]["videoId"] for item in pl_resp.get("items", []) if item.get("contentDetails", {}).get("videoId")]
-            except Exception as pl_err:
-                pass
+                video_ids = [item["id"]["videoId"] for item in search_resp.get("items", []) if item.get("id", {}).get("videoId")]
 
-        if not video_ids:
-            search_resp = youtube.search().list(
-                part="id",
-                channelId=channel_id,
-                order="date",
-                type="video",
-                maxResults=50
+            if not video_ids:
+                return jsonify({"error": "No videos found for this channel."}), 404
+
+            videos_resp = youtube.videos().list(
+                part="snippet,statistics",
+                id=",".join(video_ids)
             ).execute()
-            video_ids = [item["id"]["videoId"] for item in search_resp.get("items", []) if item.get("id", {}).get("videoId")]
 
-        if not video_ids:
-            return jsonify({"error": "No videos found for this channel."}), 404
+            videos = []
+            for v in videos_resp.get("items", []):
+                pub_date = v["snippet"]["publishedAt"][:10]  # YYYY-MM-DD
+                view_count = int(v["statistics"].get("viewCount", 0))
+                videos.append({
+                    "published": pub_date,
+                    "views": view_count,
+                    "title": v["snippet"]["title"]
+                })
 
-        videos_resp = youtube.videos().list(
-            part="snippet,statistics",
-            id=",".join(video_ids)
-        ).execute()
-
-        videos = []
-        for v in videos_resp.get("items", []):
-            pub_date = v["snippet"]["publishedAt"][:10]  # YYYY-MM-DD
-            view_count = int(v["statistics"].get("viewCount", 0))
-            videos.append({
-                "published": pub_date,
-                "views": view_count,
-                "title": v["snippet"]["title"]
-            })
-
-        # Calculate average views by upload day
-        day_views = {0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: []} # Mon to Sun
-        for v in videos:
-            dt = datetime.strptime(v["published"], "%Y-%m-%d")
-            day_of_week = dt.weekday()
-            day_views[day_of_week].append(v["views"])
-            
-        engagement_data = []
-        days = ["M", "T", "W", "T", "F", "S", "S"]
-        colors = ["#ff2a2a", "#a855f7", "#00d2ff", "#fbbf24", "#4ade80", "#f97316", "#ff5555"]
-        for i in range(7):
-            avg = sum(day_views[i]) / len(day_views[i]) if day_views[i] else 0
-            engagement_data.append({
-                "name": days[i],
-                "value": int(avg),
-                "color": colors[i]
-            })
-            
-        # Build content distribution using LLM thematic clustering
-        content_distribution = []
-        if videos:
-            titles = [v['title'] for v in videos]
-            system_prompt = (
-                "You are an expert content analyst. Analyze the following list of YouTube video titles and categorize them into 3 to 5 high-level, meaningful thematic topics (e.g., 'True Crime', 'Tutorials', 'Internet Mysteries', 'Vlogs').\n"
-                "Do NOT use simple individual words unless they represent a clear genre. Group the videos by these themes.\n"
-                "Return EXACTLY a JSON array of objects, where each object has a 'name' (the topic/theme string) and a 'count' (number of videos that fall into this theme).\n"
-                "The sum of counts should roughly equal the total number of titles provided, but it's okay if some don't fit perfectly. Just pick the dominant themes.\n"
-                "Return only raw JSON. Example: [{\"name\": \"Tech Reviews\", \"count\": 12}, {\"name\": \"Tutorials\", \"count\": 5}]"
-            )
-            human_prompt = f"Total Videos: {len(titles)}\nTitles:\n" + "\n".join(f"- {t}" for t in titles[:50])
-            
-            try:
-                content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.3, max_tokens=500)
-                result = parse_llm_json(content, context="content_distribution")
-                if isinstance(result, list) and result:
-                    # Normalize into percentages and add colors
-                    total_count = sum(item.get("count", 0) for item in result)
-                    if total_count > 0:
-                        distribution = []
-                        for item in result:
-                            count = item.get("count", 0)
-                            if count > 0:
-                                percentage = round((count / total_count) * 100)
-                                distribution.append({
-                                    "name": str(item.get("name", "Unknown")).title(),
-                                    "value": percentage,
-                                    "count": count
-                                })
-                        
-                        # Normalize to exactly 100%
-                        if distribution:
-                            distribution.sort(key=lambda x: x["value"], reverse=True)
-                            total_pct = sum(d["value"] for d in distribution)
-                            if total_pct != 100:
-                                distribution[0]["value"] += (100 - total_pct)
-                                
-                            for i, item in enumerate(distribution):
-                                item["color"] = colors[i % len(colors)]
+            # Calculate average views by upload day
+            day_views = {0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: []} # Mon to Sun
+            for v in videos:
+                dt = datetime.strptime(v["published"], "%Y-%m-%d")
+                day_of_week = dt.weekday()
+                day_views[day_of_week].append(v["views"])
+                
+            engagement_data = []
+            days = ["M", "T", "W", "T", "F", "S", "S"]
+            colors = ["#ff2a2a", "#a855f7", "#00d2ff", "#fbbf24", "#4ade80", "#f97316", "#ff5555"]
+            for i in range(7):
+                avg = sum(day_views[i]) / len(day_views[i]) if day_views[i] else 0
+                engagement_data.append({
+                    "name": days[i],
+                    "value": int(avg),
+                    "color": colors[i]
+                })
+                
+            # Build content distribution using LLM thematic clustering
+            content_distribution = []
+            if videos:
+                titles = [v['title'] for v in videos]
+                system_prompt = (
+                    "You are an expert content analyst. Analyze the following list of YouTube video titles and categorize them into 3 to 5 high-level, meaningful thematic topics (e.g., 'True Crime', 'Tutorials', 'Internet Mysteries', 'Vlogs').\n"
+                    "Do NOT use simple individual words unless they represent a clear genre. Group the videos by these themes.\n"
+                    "Return EXACTLY a JSON array of objects, where each object has a 'name' (the topic/theme string) and a 'count' (number of videos that fall into this theme).\n"
+                    "The sum of counts should roughly equal the total number of titles provided, but it's okay if some don't fit perfectly. Just pick the dominant themes.\n"
+                    "Return only raw JSON. Example: [{\"name\": \"Tech Reviews\", \"count\": 12}, {\"name\": \"Tutorials\", \"count\": 5}]"
+                )
+                human_prompt = f"Total Videos: {len(titles)}\nTitles:\n" + "\n".join(f"- {t}" for t in titles[:50])
+                
+                try:
+                    content = call_groq_api_with_retries(system_prompt, human_prompt, temperature=0.3, max_tokens=500)
+                    result = parse_llm_json(content, context="content_distribution")
+                    if isinstance(result, list) and result:
+                        # Normalize into percentages and add colors
+                        total_count = sum(item.get("count", 0) for item in result)
+                        if total_count > 0:
+                            distribution = []
+                            for item in result:
+                                count = item.get("count", 0)
+                                if count > 0:
+                                    percentage = round((count / total_count) * 100)
+                                    distribution.append({
+                                        "name": str(item.get("name", "Unknown")).title(),
+                                        "value": percentage,
+                                        "count": count
+                                    })
                             
-                            content_distribution = distribution
-            except Exception as e:
-                logger.error(f"[Views Trend] Failed to generate thematic distribution: {e}")
+                            # Normalize to exactly 100%
+                            if distribution:
+                                distribution.sort(key=lambda x: x["value"], reverse=True)
+                                total_pct = sum(d["value"] for d in distribution)
+                                if total_pct != 100:
+                                    distribution[0]["value"] += (100 - total_pct)
+                                    
+                                for i, item in enumerate(distribution):
+                                    item["color"] = colors[i % len(colors)]
+                                
+                                content_distribution = distribution
+                except Exception as e:
+                    logger.error(f"[Views Trend] Failed to generate thematic distribution: {e}")
 
-        if not content_distribution:
-            content_distribution = [{"name": "Content Analysis Unavailable", "value": 100, "color": "#00d2ff"}]
+            if not content_distribution:
+                content_distribution = [{"name": "Content Analysis Unavailable", "value": 100, "color": "#00d2ff"}]
 
-        # Fetch Most Viral Video
-        viral_video = None
-        try:
-            top_search = youtube.search().list(
-                part="id", channelId=channel_id, order="viewCount", type="video", maxResults=1
-            ).execute()
-            if top_search.get("items"):
-                top_video_id = top_search["items"][0]["id"]["videoId"]
-                top_vid_resp = youtube.videos().list(
-                    part="snippet,statistics", id=top_video_id
+            # Fetch Most Viral Video
+            viral_video = None
+            try:
+                top_search = youtube.search().list(
+                    part="id", channelId=channel_id, order="viewCount", type="video", maxResults=1
                 ).execute()
-                if top_vid_resp.get("items"):
-                    top_v = top_vid_resp["items"][0]
+                if top_search.get("items"):
+                    top_video_id = top_search["items"][0]["id"]["videoId"]
+                    top_vid_resp = youtube.videos().list(
+                        part="snippet,statistics", id=top_video_id
+                    ).execute()
+                    if top_vid_resp.get("items"):
+                        top_v = top_vid_resp["items"][0]
+                        viral_video = {
+                            "title": top_v["snippet"].get("title", ""),
+                            "description": top_v["snippet"].get("description", "")[:150] + "...",
+                            "views": int(top_v["statistics"].get("viewCount", 0)),
+                            "tags": top_v["snippet"].get("tags", [])[:5]
+                        }
+            except Exception as e:
+                logger.error("Failed to fetch viral video:", e)
+
+            if not viral_video and videos_resp.get("items"):
+                try:
+                    top_v = max(videos_resp.get("items", []), key=lambda x: int(x["statistics"].get("viewCount", 0)))
                     viral_video = {
                         "title": top_v["snippet"].get("title", ""),
                         "description": top_v["snippet"].get("description", "")[:150] + "...",
                         "views": int(top_v["statistics"].get("viewCount", 0)),
                         "tags": top_v["snippet"].get("tags", [])[:5]
                     }
-        except Exception as e:
-            logger.error("Failed to fetch viral video:", e)
+                except Exception as e:
+                    logger.error("Fallback viral video failed:", e)
 
-        if not viral_video and videos_resp.get("items"):
-            try:
-                top_v = max(videos_resp.get("items", []), key=lambda x: int(x["statistics"].get("viewCount", 0)))
-                viral_video = {
-                    "title": top_v["snippet"].get("title", ""),
-                    "description": top_v["snippet"].get("description", "")[:150] + "...",
-                    "views": int(top_v["statistics"].get("viewCount", 0)),
-                    "tags": top_v["snippet"].get("tags", [])[:5]
-                }
-            except Exception as e:
-                logger.error("Fallback viral video failed:", e)
-
-        return jsonify({
-            "engagement_data": engagement_data,
-            "content_distribution": content_distribution,
-            "videos": videos,
-            "viral_video": viral_video
+            return jsonify({
+                "engagement_data": engagement_data,
+                "content_distribution": content_distribution,
+                "videos": videos,
+                "viral_video": viral_video
         })
 
-    except Exception as exc:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(exc)}), 500
+        except Exception as exc:
+            err_str = str(exc).lower()
+            is_quota = any(k in err_str for k in ["quota", "rate", "limit", "403", "exceeded"])
+            if is_quota and key_idx < len(yt_keys):
+                logger.info(f"YouTube key {key_idx} quota/rate limited. Trying next...")
+                last_err = exc
+                continue
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(exc)}), 500
+            
+    return jsonify({"error": str(last_err)}), 500
 
 
 @app.route("/analyze", methods=["POST"])
@@ -3659,30 +3671,38 @@ def trending_ideas():
             logger.info(f"[TrendingIdeas] Channel: {channel_info.get('channel_name')}")
 
             # ── Timeframe-aware video title fetch ────────────────────────────
-            yt_key      = get_youtube_api_key()
+            yt_keys     = get_youtube_api_keys()
             channel_id  = channel_info.get("channel_id", "")
             titles_in_window = []
 
-            if yt_key and channel_id and days_window < 9999:
-                try:
-                    youtube   = build("youtube", "v3", developerKey=yt_key)
-                    published_after = (datetime.utcnow() - timedelta(days=days_window)).strftime("%Y-%m-%dT00:00:00Z")
-                    search_resp = youtube.search().list(
-                        part="snippet",
-                        channelId=channel_id,
-                        order="date",
-                        type="video",
-                        publishedAfter=published_after,
-                        maxResults=15
-                    ).execute()
-                    titles_in_window = [
-                        item["snippet"]["title"]
-                        for item in search_resp.get("items", [])
-                        if item.get("snippet", {}).get("title")
-                    ]
-                    logger.info(f"[TrendingIdeas] {len(titles_in_window)} videos found in {timeframe} window")
-                except Exception as yt_err:
-                    logger.error(f"[TrendingIdeas] Timeframe fetch failed: {yt_err}")
+            if yt_keys and channel_id and days_window < 9999:
+                for key_idx, yt_key in enumerate(yt_keys, 1):
+                    try:
+                        youtube   = build("youtube", "v3", developerKey=yt_key)
+                        published_after = (datetime.utcnow() - timedelta(days=days_window)).strftime("%Y-%m-%dT00:00:00Z")
+                        search_resp = youtube.search().list(
+                            part="snippet",
+                            channelId=channel_id,
+                            order="date",
+                            type="video",
+                            publishedAfter=published_after,
+                            maxResults=15
+                        ).execute()
+                        titles_in_window = [
+                            item["snippet"]["title"]
+                            for item in search_resp.get("items", [])
+                            if item.get("snippet", {}).get("title")
+                        ]
+                        logger.info(f"[TrendingIdeas] {len(titles_in_window)} videos found in {timeframe} window")
+                        break
+                    except Exception as yt_err:
+                        err_str = str(yt_err).lower()
+                        is_quota_err = any(kw in err_str for kw in ["quota", "rate", "limit", "403", "exceeded"])
+                        if is_quota_err and key_idx < len(yt_keys):
+                            logger.info(f"[TrendingIdeas] Key {key_idx} quota exceeded. Trying next...")
+                            continue
+                        logger.error(f"[TrendingIdeas] Timeframe fetch failed: {yt_err}")
+                        break
 
             # Fall back to last 10 if nothing in the chosen window
             if not titles_in_window:
