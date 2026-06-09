@@ -2519,7 +2519,7 @@ def ra_step2_youtube(state: NicheResearchState) -> dict:
 
     with ThreadPoolExecutor(max_workers=min(12, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try: results += fut.result(timeout=20)
+            try: results += fut.result(timeout=10)
             except Exception as e: logger.error(f"[Step2] {e}")
 
     seen, unique = set(), []
@@ -2553,7 +2553,7 @@ def ra_step3_trends(state: NicheResearchState) -> dict:
     with ThreadPoolExecutor(max_workers=min(5, MAX_WORKERS_PER_REQUEST)) as ex:
         futs = [ex.submit(research_tavily, q, 4) for q in trend_queries]
         for fut in as_completed(futs):
-            try: results += fut.result(timeout=15)
+            try: results += fut.result(timeout=10)
             except Exception as e: logger.error(f"[Step3] {e}")
 
     seen, unique = set(), []
@@ -2587,7 +2587,7 @@ def ra_step4_reddit(state: NicheResearchState) -> dict:
 
     with ThreadPoolExecutor(max_workers=min(10, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try: results += fut.result(timeout=15)
+            try: results += fut.result(timeout=10)
             except Exception as e: logger.error(f"[Step4] {e}")
 
     seen, unique = set(), []
@@ -2624,7 +2624,7 @@ def ra_step5_twitter(state: NicheResearchState) -> dict:
 
     with ThreadPoolExecutor(max_workers=min(10, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try: results += fut.result(timeout=15)
+            try: results += fut.result(timeout=10)
             except Exception as e: logger.error(f"[Step5] {e}")
 
     seen, unique = set(), []
@@ -2662,7 +2662,7 @@ def ra_step6_news(state: NicheResearchState) -> dict:
 
     with ThreadPoolExecutor(max_workers=min(12, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try: results += fut.result(timeout=20)
+            try: results += fut.result(timeout=10)
             except Exception as e: logger.error(f"[Step6] {e}")
 
     seen, unique = set(), []
@@ -2698,7 +2698,7 @@ def ra_step7_blogs(state: NicheResearchState) -> dict:
 
     with ThreadPoolExecutor(max_workers=min(12, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try: results += fut.result(timeout=20)
+            try: results += fut.result(timeout=10)
             except Exception as e: logger.error(f"[Step7] {e}")
 
     seen, unique = set(), []
@@ -2740,7 +2740,7 @@ def ra_step8_forums(state: NicheResearchState) -> dict:
 
     with ThreadPoolExecutor(max_workers=min(12, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
-            try: results += fut.result(timeout=15)
+            try: results += fut.result(timeout=10)
             except Exception as e: logger.error(f"[Step8] {e}")
 
     seen, unique = set(), []
@@ -3094,7 +3094,7 @@ def ra_formatter(state: NicheResearchState) -> dict:
         for fut in as_completed(future_to_idea):
             idea = future_to_idea[fut]
             try:
-                res = fut.result(timeout=15)
+                res = fut.result(timeout=45)
                 idea["trends_approved"] = res.get("approved")
                 idea["trends_reason"]   = res.get("reason", "")
                 
@@ -3170,7 +3170,7 @@ except Exception as _e:
 
 # Request timeout for the full research pipeline (seconds).
 # Prevents any single request from hanging a worker indefinitely.
-_RESEARCH_TIMEOUT_SECONDS = int(os.environ.get("RESEARCH_TIMEOUT", "270"))
+_RESEARCH_TIMEOUT_SECONDS = int(os.environ.get("RESEARCH_TIMEOUT", "340"))
 
 
 def _invoke_graph_with_timeout(graph, initial_state, timeout_secs: int = _RESEARCH_TIMEOUT_SECONDS):
