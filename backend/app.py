@@ -3202,208 +3202,215 @@ def views_trend():
     last_err = None
     for key_idx, yt_key in enumerate(yt_keys, 1):
         try:
-        youtube = build("youtube", "v3", developerKey=yt_key)
+            youtube = build("youtube", "v3", developerKey=yt_key)
 
-        # 1. Fetch channel stats to establish a baseline for unaccounted views
-        channel_total_views = 0
-        channel_published_at = None
-        try:
-            channel_resp = youtube.channels().list(
-                part="statistics,snippet",
-                id=channel_id
-            ).execute()
-            channel_items = channel_resp.get("items", [])
-            if channel_items:
-                c_stat = channel_items[0].get("statistics", {})
-                c_snip = channel_items[0].get("snippet", {})
-                channel_total_views = int(c_stat.get("viewCount", 0))
-                pub = c_snip.get("publishedAt", "")
-                if pub:
-                    channel_published_at = datetime.strptime(pub[:10], "%Y-%m-%d").date()
-        except Exception as c_err:
-            logger.error(f"[Views Trend] Failed to fetch channel stats: {c_err}")
-
-        # Cost-efficient strategy: 
-        # 2. Fetch statistics and titles for all retrieved video IDs in batches
-        uploads_playlist_id = "UU" + channel_id[2:] if channel_id.startswith("UC") else ""
-        video_ids = []
-        
-        if uploads_playlist_id:
+            # 1. Fetch channel stats to establish a baseline for unaccounted views
+            channel_total_views = 0
+            channel_published_at = None
             try:
-                next_page_token = None
-                while len(video_ids) < 250:
-                    pl_resp = youtube.playlistItems().list(
-                        part="contentDetails",
-                        playlistId=uploads_playlist_id,
-                        maxResults=50,
-                        pageToken=next_page_token
-                    ).execute()
-                    items = pl_resp.get("items", [])
-                    if not items:
-                        break
-                    
-                    for item in items:
-                        vid = item.get("contentDetails", {}).get("videoId")
-                        if vid and vid not in video_ids:
-                            video_ids.append(vid)
-                            
-                    next_page_token = pl_resp.get("nextPageToken")
-                    if not next_page_token:
-                        break
-                logger.info(f"[Views Trend][API] Found {len(video_ids)} recent videos via uploads playlist UU...")
-            except Exception as pl_err:
-                logger.error(f"[Views Trend][API] Failed to fetch playlist items: {pl_err}")
-
-        # Fallback to search if uploads playlist fails or returns empty (Cost: 100 units per page)
-        if not video_ids:
-            logger.info(f"[Views Trend][API][Fallback] Using search fallback to find recent videos for channel {channel_id}")
-            try:
-                next_page_token = None
-                while len(video_ids) < 250:
-                    search_resp = youtube.search().list(
-                        part="id",
-                        channelId=channel_id,
-                        order="date",
-                        type="video",
-                        maxResults=50,
-                        pageToken=next_page_token
-                    ).execute()
-                    items = search_resp.get("items", [])
-                    if not items:
-                        break
-                        
-                    for item in items:
-                        vid = item.get("id", {}).get("videoId")
-                        if vid and vid not in video_ids:
-                            video_ids.append(vid)
-                            
-                    next_page_token = search_resp.get("nextPageToken")
-                    if not next_page_token:
-                        break
-            except Exception as search_err:
-                logger.error(f"[Views Trend][API] Failed to fetch search items: {search_err}")
-
-        if not video_ids:
-            return jsonify({"error": "No videos found for this channel."}), 404
-
-        # Get detailed stats for each video in batches of 50 (Cost: 1 unit per batch)
-        videos = []
-        for i in range(0, len(video_ids), 50):
-            batch_ids = video_ids[i:i+50]
-            try:
-                videos_resp = youtube.videos().list(
-                    part="snippet,statistics",
-                    id=",".join(batch_ids)
+                channel_resp = youtube.channels().list(
+                    part="statistics,snippet",
+                    id=channel_id
                 ).execute()
-                
-                for v in videos_resp.get("items", []):
-                    pub_date = v["snippet"]["publishedAt"][:10]  # YYYY-MM-DD
-                    view_count = int(v["statistics"].get("viewCount", 0))
-                    videos.append({
-                        "published": pub_date,
-                        "views": view_count,
-                        "title": v["snippet"]["title"]
-                    })
-            except Exception as v_err:
-                logger.error(f"[Views Trend][API] Failed to fetch video stats batch: {v_err}")
+                channel_items = channel_resp.get("items", [])
+                if channel_items:
+                    c_stat = channel_items[0].get("statistics", {})
+                    c_snip = channel_items[0].get("snippet", {})
+                    channel_total_views = int(c_stat.get("viewCount", 0))
+                    pub = c_snip.get("publishedAt", "")
+                    if pub:
+                        channel_published_at = datetime.strptime(pub[:10], "%Y-%m-%d").date()
+            except Exception as c_err:
+                logger.error(f"[Views Trend] Failed to fetch channel stats: {c_err}")
 
-        # Sort by published date
-        videos.sort(key=lambda x: x["published"])
-
-        # Build time-series data for different timeframes.
-        today = datetime.utcnow().date()
+            # Cost-efficient strategy: 
+            # 2. Fetch statistics and titles for all retrieved video IDs in batches
+            uploads_playlist_id = "UU" + channel_id[2:] if channel_id.startswith("UC") else ""
+            video_ids = []
         
-        # Calculate baseline daily views for all older/unaccounted videos
-        recent_videos_views = sum(v["views"] for v in videos)
-        unaccounted_views = max(0, channel_total_views - recent_videos_views)
+            if uploads_playlist_id:
+                try:
+                    next_page_token = None
+                    while len(video_ids) < 250:
+                        pl_resp = youtube.playlistItems().list(
+                            part="contentDetails",
+                            playlistId=uploads_playlist_id,
+                            maxResults=50,
+                            pageToken=next_page_token
+                        ).execute()
+                        items = pl_resp.get("items", [])
+                        if not items:
+                            break
+                    
+                        for item in items:
+                            vid = item.get("contentDetails", {}).get("videoId")
+                            if vid and vid not in video_ids:
+                                video_ids.append(vid)
+                            
+                        next_page_token = pl_resp.get("nextPageToken")
+                        if not next_page_token:
+                            break
+                    logger.info(f"[Views Trend][API] Found {len(video_ids)} recent videos via uploads playlist UU...")
+                except Exception as pl_err:
+                    logger.error(f"[Views Trend][API] Failed to fetch playlist items: {pl_err}")
+
+            # Fallback to search if uploads playlist fails or returns empty (Cost: 100 units per page)
+            if not video_ids:
+                logger.info(f"[Views Trend][API][Fallback] Using search fallback to find recent videos for channel {channel_id}")
+                try:
+                    next_page_token = None
+                    while len(video_ids) < 250:
+                        search_resp = youtube.search().list(
+                            part="id",
+                            channelId=channel_id,
+                            order="date",
+                            type="video",
+                            maxResults=50,
+                            pageToken=next_page_token
+                        ).execute()
+                        items = search_resp.get("items", [])
+                        if not items:
+                            break
+                        
+                        for item in items:
+                            vid = item.get("id", {}).get("videoId")
+                            if vid and vid not in video_ids:
+                                video_ids.append(vid)
+                            
+                        next_page_token = search_resp.get("nextPageToken")
+                        if not next_page_token:
+                            break
+                except Exception as search_err:
+                    logger.error(f"[Views Trend][API] Failed to fetch search items: {search_err}")
+
+            if not video_ids:
+                return jsonify({"error": "No videos found for this channel."}), 404
+
+            # Get detailed stats for each video in batches of 50 (Cost: 1 unit per batch)
+            videos = []
+            for i in range(0, len(video_ids), 50):
+                batch_ids = video_ids[i:i+50]
+                try:
+                    videos_resp = youtube.videos().list(
+                        part="snippet,statistics",
+                        id=",".join(batch_ids)
+                    ).execute()
+                
+                    for v in videos_resp.get("items", []):
+                        pub_date = v["snippet"]["publishedAt"][:10]  # YYYY-MM-DD
+                        view_count = int(v["statistics"].get("viewCount", 0))
+                        videos.append({
+                            "published": pub_date,
+                            "views": view_count,
+                            "title": v["snippet"]["title"]
+                        })
+                except Exception as v_err:
+                    logger.error(f"[Views Trend][API] Failed to fetch video stats batch: {v_err}")
+
+            # Sort by published date
+            videos.sort(key=lambda x: x["published"])
+
+            # Build time-series data for different timeframes.
+            today = datetime.utcnow().date()
         
-        channel_age_days = 1
-        if channel_published_at:
-            channel_age_days = max(1, (today - channel_published_at).days + 1)
+            # Calculate baseline daily views for all older/unaccounted videos
+            recent_videos_views = sum(v["views"] for v in videos)
+            unaccounted_views = max(0, channel_total_views - recent_videos_views)
         
-        # We assume the channel has a baseline of views coming from older videos
-        baseline_daily = unaccounted_views / channel_age_days
+            channel_age_days = 1
+            if channel_published_at:
+                channel_age_days = max(1, (today - channel_published_at).days + 1)
+        
+            # We assume the channel has a baseline of views coming from older videos
+            baseline_daily = unaccounted_views / channel_age_days
 
-        timeframes = {}
+            timeframes = {}
 
-        for tf_days, tf_label in [(7, "7"), (28, "28"), (90, "90"), (365, "365"), (9999, "999")]:
-            # Cap lifetime timeline to actual channel age to avoid generating 27+ years of data
-            effective_days = min(tf_days, channel_age_days) if tf_days > 365 else tf_days
-            cutoff = today - timedelta(days=effective_days)
-            day_data = {}
+            for tf_days, tf_label in [(7, "7"), (28, "28"), (90, "90"), (365, "365"), (9999, "999")]:
+                # Cap lifetime timeline to actual channel age to avoid generating 27+ years of data
+                effective_days = min(tf_days, channel_age_days) if tf_days > 365 else tf_days
+                cutoff = today - timedelta(days=effective_days)
+                day_data = {}
 
-            # Seed the range so every timeframe produces a stable timeline, starting with baseline
-            for d in range(effective_days, -1, -1):
-                day = today - timedelta(days=d)
-                # Cap the baseline start so we don't apply baseline before channel existed
-                if channel_published_at and day < channel_published_at:
-                    day_data[day.isoformat()] = 0.0
-                else:
-                    day_data[day.isoformat()] = baseline_daily
+                # Seed the range so every timeframe produces a stable timeline, starting with baseline
+                for d in range(effective_days, -1, -1):
+                    day = today - timedelta(days=d)
+                    # Cap the baseline start so we don't apply baseline before channel existed
+                    if channel_published_at and day < channel_published_at:
+                        day_data[day.isoformat()] = 0.0
+                    else:
+                        day_data[day.isoformat()] = baseline_daily
 
-            for v in videos:
-                pub = datetime.strptime(v["published"], "%Y-%m-%d").date()
-                lifetime_views = v["views"]
-                total_span_days = (today - pub).days + 1
+                for v in videos:
+                    pub = datetime.strptime(v["published"], "%Y-%m-%d").date()
+                    lifetime_views = v["views"]
+                    total_span_days = (today - pub).days + 1
                 
-                if total_span_days <= 0:
-                    continue
-
-                # Model: 70% launch spike, 30% evergreen flat rate
-                launch_fraction = 0.70
-                evergreen_fraction = 0.30
-                
-                # Adjust fractions if the video is fresher than 14 days
-                if total_span_days < 14:
-                    launch_fraction = 1.0 - (0.30 * (total_span_days / 14.0))
-                    evergreen_fraction = 1.0 - launch_fraction
-                
-                launch_views = lifetime_views * launch_fraction
-                evergreen_views = lifetime_views * evergreen_fraction
-                
-                # 1. Distribute evergreen views equally over the entire lifetime of the video
-                evergreen_daily = evergreen_views / total_span_days
-                
-                # 2. Distribute launch views over the first 14 days using exponential decay
-                launch_span = min(total_span_days, 14)
-                launch_weights = [math.exp(-offset / 3.0) for offset in range(launch_span)]
-                launch_weight_total = sum(launch_weights) or 1.0
-                
-                for offset in range(total_span_days):
-                    day = pub + timedelta(days=offset)
-                    if day < cutoff or day > today:
+                    if total_span_days <= 0:
                         continue
+
+                    # Model: 70% launch spike, 30% evergreen flat rate
+                    launch_fraction = 0.70
+                    evergreen_fraction = 0.30
+                
+                    # Adjust fractions if the video is fresher than 14 days
+                    if total_span_days < 14:
+                        launch_fraction = 1.0 - (0.30 * (total_span_days / 14.0))
+                        evergreen_fraction = 1.0 - launch_fraction
+                
+                    launch_views = lifetime_views * launch_fraction
+                    evergreen_views = lifetime_views * evergreen_fraction
+                
+                    # 1. Distribute evergreen views equally over the entire lifetime of the video
+                    evergreen_daily = evergreen_views / total_span_days
+                
+                    # 2. Distribute launch views over the first 14 days using exponential decay
+                    launch_span = min(total_span_days, 14)
+                    launch_weights = [math.exp(-offset / 3.0) for offset in range(launch_span)]
+                    launch_weight_total = sum(launch_weights) or 1.0
+                
+                    for offset in range(total_span_days):
+                        day = pub + timedelta(days=offset)
+                        if day < cutoff or day > today:
+                            continue
                         
-                    key = day.isoformat()
+                        key = day.isoformat()
                     
-                    # Evergreen contribution
-                    contribution = evergreen_daily
+                        # Evergreen contribution
+                        contribution = evergreen_daily
                     
-                    # Launch contribution (only during the first 14 days after publication)
-                    if offset < launch_span:
-                        contribution += launch_views * launch_weights[offset] / launch_weight_total
+                        # Launch contribution (only during the first 14 days after publication)
+                        if offset < launch_span:
+                            contribution += launch_views * launch_weights[offset] / launch_weight_total
                         
-                    day_data[key] = day_data.get(key, 0.0) + contribution
+                        day_data[key] = day_data.get(key, 0.0) + contribution
 
-            sorted_days = sorted(day_data.keys())
-            labels = sorted_days
-            values = [max(0, int(round(day_data[d]))) for d in sorted_days]
+                sorted_days = sorted(day_data.keys())
+                labels = sorted_days
+                values = [max(0, int(round(day_data[d]))) for d in sorted_days]
 
-            total_period = sum(values)
-            timeframes[tf_label] = {
-                "labels": labels,
-                "values": values,
-                "total": total_period
-            }
+                total_period = sum(values)
+                timeframes[tf_label] = {
+                    "labels": labels,
+                    "values": values,
+                    "total": total_period
+                }
 
-        return jsonify({
-            "timeframes": timeframes,
-            "videos": videos[:10]  # Return top 10 for reference
-        })
+            return jsonify({
+                "timeframes": timeframes,
+                "videos": videos[:10]  # Return top 10 for reference
+            })
 
-    except Exception as exc:
-        traceback.print_exc()
-        return jsonify({"error": str(exc)}), 500
+        except Exception as exc:
+            err_str = str(exc).lower()
+            if any(k in err_str for k in ["quota", "rate", "limit", "403", "exceeded"]) and key_idx < len(yt_keys):
+                logger.info(f"[Views Trend] Key {key_idx} quota/rate limited. Trying next...")
+                last_err = exc
+                continue
+            traceback.print_exc()
+            return jsonify({"error": str(exc)}), 500
+            
+    return jsonify({"error": str(last_err)}), 500
 
 
 
