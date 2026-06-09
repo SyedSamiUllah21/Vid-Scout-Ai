@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { requestJson } from '../lib/api';
+
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.MODE === 'development' ? '' : 'https://vid-scout-ai.onrender.com')).replace(/\/$/, '');
+
+// Prevents Render free tier cold starts by pinging the server every 9 minutes
+function useKeepAlive() {
+  useEffect(() => {
+    const ping = () => fetch(`${API_BASE}/`, { method: 'GET', mode: 'no-cors' }).catch(() => {});
+    ping();
+    const id = setInterval(ping, 9 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+}
 
 const AGENT_STEPS = [
   '🔥 Scanning TikTok & Instagram Reels (TOP PRIORITY)…',
@@ -19,6 +31,7 @@ const riskColor  = (r) => r === 'Low' ? '#4ade80' : r === 'Medium' ? '#eab308' :
 const formatIcon = (f) => f === 'Short' ? 'fa-solid fa-bolt' : f === 'Deep Dive' ? 'fa-solid fa-book-open' : 'fa-solid fa-play';
 
 const TrendingIdeas = () => {
+  useKeepAlive();
   const [url, setUrl]             = useState('');
   const [timeframe, setTimeframe] = useState('28d');
   const [loading, setLoading]     = useState(false);

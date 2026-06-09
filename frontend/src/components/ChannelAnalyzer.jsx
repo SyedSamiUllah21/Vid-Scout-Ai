@@ -2,6 +2,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, LabelList } from 'recharts';
 import { requestJson } from '../lib/api';
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.MODE === 'development' ? '' : 'https://vid-scout-ai.onrender.com')).replace(/\/$/, '');
+
+// Keep-alive ping: prevents Render free tier from sleeping.
+// Fires immediately on mount and every 9 minutes thereafter.
+function useKeepAlive() {
+  useEffect(() => {
+    const ping = () => fetch(`${API_BASE}/`, { method: 'GET', mode: 'no-cors' }).catch(() => {});
+    ping();
+    const id = setInterval(ping, 9 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+}
+
 
 
 
@@ -13,6 +26,7 @@ import { requestJson } from '../lib/api';
 
 
 const ChannelAnalyzer = () => {
+  useKeepAlive();
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -72,7 +86,7 @@ const ChannelAnalyzer = () => {
       const data = await requestJson('/analyze', {
         method: 'POST',
         body: JSON.stringify({ channel_url: channelUrl }),
-      }, 240000);
+      }, 350000);
       if (data.error) {
         setError(data.error);
       } else {

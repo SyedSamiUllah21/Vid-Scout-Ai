@@ -5,7 +5,7 @@ const buildUrl = (path) => {
   return API_BASE ? `${API_BASE}${normalizedPath}` : normalizedPath;
 };
 
-export async function requestJson(path, options = {}, timeoutMs = 180000) {
+export async function requestJson(path, options = {}, timeoutMs = 350000) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
