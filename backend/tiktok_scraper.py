@@ -13,7 +13,7 @@ logger = logging.getLogger("tiktok-scraper")
 # Try to import TikTokApi - it might not be installed yet
 try:
     from TikTokApi import TikTokApi
-    TIKTOK_API_AVAILABLE = True
+    TIKTOK_API_AVAILABLE = False  # Disabled for performance, forces fast DuckDuckGo fallback
 except ImportError:
     TIKTOK_API_AVAILABLE = False
     logger.warning("[TikTok] TikTokApi not installed. Install with: pip install TikTokApi playwright")

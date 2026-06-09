@@ -12,10 +12,9 @@ logger = logging.getLogger("instagram-scraper")
 # Try to import Instaloader - it might not be installed yet
 try:
     import instaloader
-    INSTALOADER_AVAILABLE = True
+    INSTALOADER_AVAILABLE = False  # Disabled for performance
 except ImportError:
     INSTALOADER_AVAILABLE = False
-    logger.warning("[Instagram] Instaloader not installed. Install with: pip install instaloader")
 
 
 # Initialize Instaloader (singleton pattern)

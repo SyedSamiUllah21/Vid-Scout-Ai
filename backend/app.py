@@ -1538,7 +1538,7 @@ def research_google_trends_pytrends(keywords: list, topic: str = "") -> list[dic
     try:
         from pytrends.request import TrendReq
         # Fix: pytrends 4.9.2 doesn't support retries/backoff_factor parameters
-        pytrends = TrendReq(hl="en-US", tz=420, timeout=(10, 25))
+        pytrends = TrendReq(hl="en-US", tz=420, timeout=(5, 10), retries=0)
 
         # Use top 3 keywords (pytrends max is 5)
         kw_list = [k for k in keywords[:3] if k and len(k) > 2]
@@ -1597,7 +1597,7 @@ def validate_idea_with_google_trends(keywords: list) -> dict:
     """
     try:
         from pytrends.request import TrendReq
-        pytrends = TrendReq(hl="en-US", tz=420, timeout=(10, 25))
+        pytrends = TrendReq(hl="en-US", tz=420, timeout=(5, 10), retries=0)
         
         # Take the most important 1-2 keywords
         kw_list = [k for k in keywords[:2] if k and len(k) > 2]
