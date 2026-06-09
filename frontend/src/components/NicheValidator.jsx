@@ -139,7 +139,7 @@ const NicheValidator = () => {
           </div>
           
           <div className="results-container" style={{ width: '100%' }}>
-            
+            <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: '#fff', margin: '0 0 24px 0', textTransform: 'capitalize' }}>{niche}</h2>
             <div className="glass-card" style={{ padding: '40px', display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.5fr', gap: '40px', alignItems: 'center', background: '#000000' }}>
               
               {/* Left Column */}
