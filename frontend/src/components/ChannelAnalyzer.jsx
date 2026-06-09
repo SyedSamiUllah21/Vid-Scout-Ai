@@ -174,6 +174,7 @@ const ChannelAnalyzer = () => {
                     className="form-input" 
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !loading && generate()}
                     placeholder="https://youtube.com/@channelname" 
                   />
                 </div>

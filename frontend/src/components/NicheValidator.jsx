@@ -78,6 +78,7 @@ const NicheValidator = () => {
                     className="form-input" 
                     value={niche}
                     onChange={(e) => setNiche(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !loading && generate()}
                     placeholder="e.g. AI tools for architects or solo travel in Asia" 
                     style={{ borderColor: 'rgba(249, 115, 22, 0.15)' }}
                   />

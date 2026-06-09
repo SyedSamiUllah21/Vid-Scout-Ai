@@ -128,6 +128,7 @@ const ThumbnailAnalyzer = () => {
                     className="form-input" 
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !loading && generate()}
                     placeholder="Enter the title of the video this thumbnail belongs to..." 
                     style={{ borderColor: 'rgba(234, 179, 8, 0.15)' }}
                   />

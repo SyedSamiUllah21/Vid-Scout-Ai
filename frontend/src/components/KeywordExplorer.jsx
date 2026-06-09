@@ -74,6 +74,7 @@ const KeywordExplorer = () => {
                     className="form-input" 
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !loading && generate()}
                     placeholder="e.g. youtube automation or chatgpt course" 
                     style={{ borderColor: 'rgba(59, 130, 246, 0.15)' }}
                   />
