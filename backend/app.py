@@ -1831,7 +1831,7 @@ def call_groq_api_with_retries(system_prompt: str, human_prompt: str, temperatur
                 url,
                 headers=headers,
                 json=payload,
-                timeout=120  # Increased from 60 to 120 for large responses
+                timeout=25  # Reduced from 120 to 25 to allow fast failover
             )
             
             # Log ALL non-200 responses with full body for debugging
