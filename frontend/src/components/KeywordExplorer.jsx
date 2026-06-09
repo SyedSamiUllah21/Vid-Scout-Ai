@@ -134,8 +134,8 @@ const KeywordExplorer = () => {
               <button className="dash-back-btn" onClick={() => setResults(null)} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: '#ef4444', background: 'transparent', border: 'none', padding: 0, fontSize: '1rem', marginBottom: '16px', cursor: 'pointer' }}>
                 <i className="fa-solid fa-arrow-left"></i> New Search
               </button>
-              <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: '#fff', margin: '0 0 12px 0' }}>Keyword Explorer</h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '1.05rem', margin: 0 }}>Discover high-potential keywords to optimize your content strategy.</p>
+              <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: '#fff', margin: '0 0 12px 0', textTransform: 'capitalize' }}>{keyword}</h2>
+              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '1.05rem', margin: 0 }}>Keyword Explorer Analysis</p>
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '30px' }}>
@@ -144,9 +144,7 @@ const KeywordExplorer = () => {
                 <input type="text" placeholder="Search keywords..." style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '12px 16px 12px 48px', color: '#fff', width: '280px', outline: 'none', fontSize: '1rem' }} />
                 <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: '4px' }}>Ctrl /</span>
               </div>
-              <button style={{ background: 'transparent', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#ef4444', padding: '12px 24px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '1rem', fontWeight: 600 }}>
-                <i className="fa-solid fa-download"></i> Export <i className="fa-solid fa-chevron-down" style={{ fontSize: '0.8rem', marginLeft: '4px' }}></i>
-              </button>
+
             </div>
           </div>
 
