@@ -4,7 +4,7 @@ services:
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python -m playwright install chromium
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 8 --timeout 300 --keep-alive 5
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 16 --worker-class gthread --timeout 350 --keep-alive 75 --graceful-timeout 30 --log-level info
     envVars:
       - key: FLASK_ENV
         value: production

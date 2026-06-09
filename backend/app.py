@@ -8,14 +8,23 @@ import math
 import time as _time
 import traceback
 import logging
+import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 
 # ── Structured Logging Setup ────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+    format="%(asctime)s [%(levelname)s] %(name)s %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("yt-researcher")
+
+# ── Production thread cap (per-request ThreadPoolExecutor max_workers) ──────
+# Prevents thread explosion under 10-20 concurrent users.
+# In dev (FLASK_ENV != production) we allow higher limits.
+_IS_PRODUCTION = os.environ.get("FLASK_ENV", "development") == "production"
+MAX_WORKERS_PER_REQUEST = 8 if _IS_PRODUCTION else 20
+logger.info(f"[Startup] Production mode: {_IS_PRODUCTION} | Max workers/request: {MAX_WORKERS_PER_REQUEST}")
 
 # Force UTF-8 output on Windows to prevent encoding crashes with special chars
 if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
@@ -25,11 +34,14 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     except Exception:
         pass
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import urllib.parse
 import html as html_decoder
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_compress import Compress
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
@@ -150,6 +162,14 @@ def parse_llm_json(content: str, context: str = "LLM response"):
 
 app = Flask(__name__)
 
+# ── Gzip Compression — reduce response size ~70% ────────────────────────────
+Compress(app)
+app.config["COMPRESS_MIMETYPES"] = [
+    "application/json", "text/html", "text/plain", "text/css", "application/javascript"
+]
+app.config["COMPRESS_LEVEL"] = 6
+app.config["COMPRESS_MIN_SIZE"] = 1024  # Only compress responses > 1 KB
+
 @app.route("/")
 def health_check():
     return jsonify({"status": "ok", "message": "Vid Scout AI Backend is running!"}), 200
@@ -159,19 +179,37 @@ def health_check():
 CORS(app, resources={r"/api/*": {"origins": "*"},
                      r"/analyze": {"origins": "*"}})
 
-# ── Rate Limiting — protect API keys from abuse ─────────────────────────────
+# ── Rate Limiting — Redis-backed (shared across workers) with memory fallback ─
+_REDIS_URL = os.environ.get("REDIS_URL", "").strip()
+_limiter_storage = _REDIS_URL if _REDIS_URL else "memory://"
+if _REDIS_URL:
+    logger.info(f"[Startup] Rate limiter: Redis ({_REDIS_URL[:30]}...)")
+else:
+    logger.info("[Startup] Rate limiter: in-memory (add REDIS_URL env var for shared limits)")
+
 limiter = Limiter(
     get_remote_address,
     app=app,
     default_limits=["60 per minute"],
-    storage_uri="memory://",
+    storage_uri=_limiter_storage,
 )
 
-# ── Response Caching — reduce redundant API calls ───────────────────────────
-cache = Cache(app, config={
-    "CACHE_TYPE": "SimpleCache",
-    "CACHE_DEFAULT_TIMEOUT": 3600,  # 1 hour default TTL
-})
+# ── Response Caching — Redis-backed (shared across workers) with SimpleCache fallback ─
+if _REDIS_URL:
+    _cache_config = {
+        "CACHE_TYPE": "RedisCache",
+        "CACHE_REDIS_URL": _REDIS_URL,
+        "CACHE_DEFAULT_TIMEOUT": 3600,
+    }
+    logger.info("[Startup] Response cache: Redis (shared across workers)")
+else:
+    _cache_config = {
+        "CACHE_TYPE": "SimpleCache",
+        "CACHE_DEFAULT_TIMEOUT": 3600,
+    }
+    logger.info("[Startup] Response cache: SimpleCache (in-memory, per-worker — add REDIS_URL for shared cache)")
+
+cache = Cache(app, config=_cache_config)
 
 TIMEFRAME_MAP = {
     "3d": "past 3 days",
@@ -188,6 +226,27 @@ BROWSER_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
+
+# ── Shared HTTP Session with Connection Pooling ──────────────────────────────
+# Reuses TCP connections across all outbound requests instead of creating a
+# new connection per call. Dramatically reduces latency under concurrent load.
+_retry_strategy = Retry(
+    total=2,
+    backoff_factor=0.3,
+    status_forcelist=[500, 502, 503, 504],
+    allowed_methods=["GET", "POST"],
+    raise_on_status=False,
+)
+_http_adapter = HTTPAdapter(
+    pool_connections=30,   # number of connection pools
+    pool_maxsize=60,        # max connections per pool
+    max_retries=_retry_strategy,
+)
+_session = requests.Session()
+_session.mount("https://", _http_adapter)
+_session.mount("http://", _http_adapter)
+_session.headers.update(BROWSER_HEADERS)
+logger.info("[Startup] Shared HTTP session ready (pool_connections=30, pool_maxsize=60)")
 
 
 # ── Channel Scraper ─────────────────────────────────────────────────────────
@@ -414,7 +473,7 @@ def scrape_channel_page(channel_url: str) -> dict:
     # ── Method 2: HTML Scraper Fallback ──────────────────────────────────────
     logger.info("[Scraper][Fallback] Running HTML scraper fallback...")
     try:
-        resp = requests.get(base_url, headers=headers, timeout=15)
+        resp = _session.get(base_url, timeout=15)
     except Exception as e:
         raise ValueError(f"Failed to connect to YouTube: {e}")
 
@@ -480,7 +539,7 @@ def scrape_channel_page(channel_url: str) -> dict:
     video_titles = []
     try:
         v_url = base_url.rstrip("/") + "/videos"
-        v_resp = requests.get(v_url, headers=headers, timeout=15)
+        v_resp = _session.get(v_url, timeout=15)
         if v_resp.status_code == 200:
             raw = re.findall(r'"title":\{"runs":\[{"text":"(.*?)"\}', v_resp.text)
             v_titles = [html_decoder.unescape(t) for t in raw if 10 < len(t) < 120]
@@ -588,12 +647,12 @@ def research_google_news(query: str, max_results: int = 6) -> list[dict]:
         # Append when:7d to force Google News to only show articles from the past week
         encoded_q = urllib.parse.quote(f"{query} when:7d")
         url = f"https://news.google.com/rss/search?q={encoded_q}&hl=en-US&gl=US&ceid=US:en"
-        resp = requests.get(url, headers=BROWSER_HEADERS, timeout=12)
+        resp = _session.get(url, timeout=12)
         if resp.status_code != 200:
             # retry without time filter if it fails
             encoded_q = urllib.parse.quote(query)
             url = f"https://news.google.com/rss/search?q={encoded_q}&hl=en-US&gl=US&ceid=US:en"
-            resp = requests.get(url, headers=BROWSER_HEADERS, timeout=12)
+            resp = _session.get(url, timeout=12)
         if resp.status_code != 200:
             return []
         items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
@@ -632,7 +691,7 @@ def research_bing_news(query: str, max_results: int = 6) -> list[dict]:
     try:
         encoded_q = urllib.parse.quote(query)
         url = f"https://www.bing.com/news/search?q={encoded_q}&format=rss&freshness=Week"
-        resp = requests.get(url, headers=BROWSER_HEADERS, timeout=12)
+        resp = _session.get(url, timeout=12)
         if resp.status_code != 200:
             return []
         items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
@@ -665,7 +724,7 @@ def research_hackernews(query: str, max_results: int = 5) -> list[dict]:
             f"&tags=story&numericFilters=created_at_i>{week_ago}"
             f"&hitsPerPage={max_results}&ranking=byDate"
         )
-        resp = requests.get(url, headers=BROWSER_HEADERS, timeout=10)
+        resp = _session.get(url, timeout=10)
         if resp.status_code != 200:
             return []
         for hit in resp.json().get("hits", [])[:max_results]:
@@ -707,7 +766,7 @@ def research_rss_blogs(keywords: list, max_results: int = 6) -> list[dict]:
 
     for feed_url in rss_feeds[:3]:
         try:
-            resp = requests.get(feed_url, headers=BROWSER_HEADERS, timeout=10)
+            resp = _session.get(feed_url, timeout=10)
             if resp.status_code != 200:
                 continue
             items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
@@ -744,7 +803,7 @@ def research_reddit(query: str, max_results: int = 5) -> list[dict]:
             "Accept": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         }
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = _session.get(url, headers=headers, timeout=10)
         
         # Reddit may return 403 - try alternative approach
         if resp.status_code == 403:
@@ -795,7 +854,7 @@ def research_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
         encoded_q = urllib.parse.quote(query)
         # df=w forces past week results in DuckDuckGo
         url = f"https://html.duckduckgo.com/html/?q={encoded_q}&df=w"
-        resp = requests.get(url, headers=BROWSER_HEADERS, timeout=10)
+        resp = _session.get(url, timeout=10)
         if resp.status_code != 200:
             return []
         html = resp.text
@@ -858,7 +917,7 @@ def research_youtube_videos(query: str, max_results: int = 8, timeframe: str = "
     try:
         encoded_q = urllib.parse.quote(query)
         url = f"https://www.youtube.com/results?search_query={encoded_q}&sp=EgIIAQ%3D%3D"
-        resp = requests.get(url, headers=BROWSER_HEADERS, timeout=12)
+        resp = _session.get(url, timeout=12)
         html = resp.text
         video_data = re.findall(r'"videoId":"([\w-]{11})"[^}}]*?"title":\{"runs":\[\{"text":"(.*?)"', html)
         seen = set()
@@ -894,7 +953,7 @@ def research_google_trends_rss(keywords: list, geo: str = "US") -> list[dict]:
 
     for feed_url in feeds:
         try:
-            resp = requests.get(feed_url, headers=BROWSER_HEADERS, timeout=12)
+            resp = _session.get(feed_url, timeout=12)
             if resp.status_code != 200:
                 continue
             items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
@@ -949,7 +1008,7 @@ def _research_tavily_domain(query: str, domains: list, max_results: int = 5, sou
 
     for key in keys:
         try:
-            resp = requests.post(
+            resp = _session.post(
                 "https://api.tavily.com/search",
                 json={
                     "api_key": key,
@@ -1030,7 +1089,7 @@ def _scrape_tiktok_free(query: str, max_results: int = 8) -> list[dict]:
         # TikTok's search URL
         encoded = urllib.parse.quote(query)
         url = f"https://www.tiktok.com/search?q={encoded}"
-        resp = requests.get(url, headers={
+        resp = _session.get(url, headers={
             **BROWSER_HEADERS,
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": "https://www.tiktok.com/",
@@ -1038,7 +1097,7 @@ def _scrape_tiktok_free(query: str, max_results: int = 8) -> list[dict]:
 
         if resp.status_code != 200:
             # Try the discover/trending page
-            resp = requests.get("https://www.tiktok.com/trending", headers=BROWSER_HEADERS, timeout=15)
+            resp = _session.get("https://www.tiktok.com/trending", timeout=15)
 
         if resp.status_code == 200:
             html = resp.text
@@ -1081,7 +1140,7 @@ def _scrape_instagram_free(query: str, max_results: int = 8) -> list[dict]:
     try:
         tag = query.replace(" ", "").lower()
         url = f"https://www.instagram.com/explore/tags/{tag}/"
-        resp = requests.get(url, headers={
+        resp = _session.get(url, headers={
             **BROWSER_HEADERS,
             "Accept-Language": "en-US,en;q=0.9",
         }, timeout=15)
@@ -1203,7 +1262,6 @@ def research_tiktok_trending(query: str, max_results: int = 8) -> list[dict]:
 
     # ── PRIORITY 2: Tavily with include_domains=["tiktok.com"] ───────────────
     # These queries return actual tiktok.com/@user/video/... links
-    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     tiktok_domain_queries = [
         f"{query} viral 2026",
@@ -1308,7 +1366,6 @@ def research_instagram_trending(query: str, max_results: int = 8) -> list[dict]:
 
     # ── PRIORITY 2: Tavily with include_domains=["instagram.com"] ────────────
     # These return actual instagram.com/p/... and instagram.com/reel/... links
-    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     ig_domain_queries = [
         f"{query} viral reel 2026",
@@ -1385,7 +1442,6 @@ def research_social_aggregators(query: str, max_results: int = 8) -> list[dict]:
     Prioritizes actual content URLs over articles about trends.
     """
     results = []
-    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     tasks = [
         # YouTube Shorts — real youtube.com/shorts/... links
@@ -1435,7 +1491,7 @@ def research_tavily(query: str, max_results: int = 5) -> list[dict]:
     results = []
     for key in keys:
         try:
-            resp = requests.post(
+            resp = _session.post(
                 "https://api.tavily.com/search",
                 json={
                     "api_key": key,
@@ -1662,7 +1718,6 @@ def deep_research(niche_info: dict | str, timeframe: str) -> list[dict]:
     Sources: Google News, Bing News, Hacker News, Reddit, DuckDuckGo, RSS Blogs, YouTube.
     All sources use past-7-days filter for trending content.
     """
-    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     if isinstance(niche_info, dict):
         search_queries = niche_info.get("search_queries", [])
@@ -1725,10 +1780,10 @@ def deep_research(niche_info: dict | str, timeframe: str) -> list[dict]:
     if yt_q2 and yt_q2.lower() != yt_q.lower():
         tasks.append(("YouTube2", lambda q=yt_q2: research_youtube_videos(q, 6, "7d")))
 
-    # Run ALL tasks in parallel (16 threads)
+    # Run ALL tasks in parallel (capped to avoid thread explosion under load)
     all_results = []
     seen_urls   = set()
-    with ThreadPoolExecutor(max_workers=16) as executor:
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS_PER_REQUEST) as executor:
         future_map = {executor.submit(fn): name for name, fn in tasks}
         for future in as_completed(future_map):
             try:
@@ -1764,11 +1819,10 @@ def deep_research(niche_info: dict | str, timeframe: str) -> list[dict]:
     all_results.sort(key=_sort_key)
 
     def _cnt(k): return sum(1 for r in all_results if k in r.get("source", ""))
-    print(
+    logger.info(
         f"[deep_research] {len(all_results)} total | "
         f"Trends={_cnt('Google Trends')} GNews={_cnt('Google News')} Bing={_cnt('Bing News')} "
-        f"HN={_cnt('Hacker News')} Reddit={_cnt('Reddit')} DDG={_cnt('DuckDuckGo')} YT={_cnt('YouTube')}",
-        flush=True
+        f"HN={_cnt('Hacker News')} Reddit={_cnt('Reddit')} DDG={_cnt('DuckDuckGo')} YT={_cnt('YouTube')}"
     )
     return all_results
 
@@ -1832,7 +1886,7 @@ def call_groq_api_with_retries(system_prompt: str, human_prompt: str, temperatur
             if require_json and "api.groq.com" in url:
                 payload["response_format"] = {"type": "json_object"}
 
-            resp = requests.post(
+            resp = _session.post(
                 url,
                 headers=headers,
                 json=payload,
@@ -2034,6 +2088,16 @@ def build_idea_graph():
     
     return workflow.compile()
 
+# ── Pre-compiled graph singletons — built ONCE at module load ────────────────
+# Compiling LangGraph is expensive. We do it once on startup and reuse the
+# compiled object for every request, saving ~200ms per call.
+try:
+    _IDEA_GRAPH = build_idea_graph()
+    logger.info("[Startup] Idea graph pre-compiled successfully")
+except Exception as _e:
+    logger.error(f"[Startup] Failed to pre-compile idea graph: {_e}")
+    _IDEA_GRAPH = None
+
 def generate_ideas_node(channel_info: dict, niche_info: dict, all_sources: list[dict]) -> list[dict]:
     """Entry point for the new LangGraph-based agentic system."""
     web_sources = [s for s in all_sources if "youtube.com" not in s.get("url", "")]
@@ -2066,7 +2130,7 @@ def generate_ideas_node(channel_info: dict, niche_info: dict, all_sources: list[
         final_ideas=[]
     )
     
-    graph = build_idea_graph()
+    graph = _IDEA_GRAPH or build_idea_graph()
     logger.info("[LangGraph] Starting idea generation workflow...")
     result = graph.invoke(initial_state)
     return result.get("final_ideas", [])
@@ -2085,7 +2149,7 @@ def explore_keyword_node(keyword: str) -> dict:
     # 1. Fetch exact autocomplete suggestions
     autocomplete_url = f"http://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q={urllib.parse.quote(keyword)}"
     try:
-        ac_res = requests.get(autocomplete_url, timeout=5)
+        ac_res = _session.get(autocomplete_url, timeout=5)
         suggestions = ac_res.json()[1][:10] if len(ac_res.json()) > 1 else []
     except Exception as e:
         logger.error(f"[KeywordExplore] Autocomplete failed: {e}")
@@ -2351,7 +2415,6 @@ def ra_step1_shortform(state: NicheResearchState) -> dict:
     kw1 = keywords[1] if len(keywords) > 1 else niche
     
     results = []
-    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     # ── TIER 1: Direct platform URL searches (real tiktok.com / instagram.com links) ──
     platform_tasks = [
@@ -2385,7 +2448,7 @@ def ra_step1_shortform(state: NicheResearchState) -> dict:
 
     all_tasks = platform_tasks + intel_tasks
 
-    with ThreadPoolExecutor(max_workers=20) as ex:
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS_PER_REQUEST) as ex:
         future_map = {ex.submit(fn): name for name, fn in all_tasks}
         for fut in as_completed(future_map):
             src_name = future_map[fut]
@@ -2444,7 +2507,6 @@ def ra_step2_youtube(state: NicheResearchState) -> dict:
     ]
 
     results = []
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     
     # YouTube Data API + Tavily fallback
     tasks = [lambda q=q: research_youtube_videos(q, 8, "7d") for q in yt_queries[:8]]
@@ -2455,7 +2517,7 @@ def ra_step2_youtube(state: NicheResearchState) -> dict:
         f"youtube {kw1} going viral now",
     ]]
 
-    with ThreadPoolExecutor(max_workers=12) as ex:
+    with ThreadPoolExecutor(max_workers=min(12, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
             try: results += fut.result(timeout=20)
             except Exception as e: logger.error(f"[Step2] {e}")
@@ -2481,7 +2543,6 @@ def ra_step3_trends(state: NicheResearchState) -> dict:
     results += research_google_trends_pytrends(keywords[:3], niche)
     results += research_google_trends_rss(keywords[:5])
 
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     trend_queries = [
         f"{niche} trending this week",
         f"{kw0} Google Trends spike 2026",
@@ -2489,7 +2550,7 @@ def ra_step3_trends(state: NicheResearchState) -> dict:
         f"what is trending in {niche} right now",
         f"{niche} most searched topic 2026",
     ]
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    with ThreadPoolExecutor(max_workers=min(5, MAX_WORKERS_PER_REQUEST)) as ex:
         futs = [ex.submit(research_tavily, q, 4) for q in trend_queries]
         for fut in as_completed(futs):
             try: results += fut.result(timeout=15)
@@ -2521,11 +2582,10 @@ def ra_step4_reddit(state: NicheResearchState) -> dict:
     ]
 
     results = []
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     tasks = [lambda q=q: research_reddit(q, 6) for q in reddit_queries]
     tasks += [lambda q=q: research_tavily(q, 4) for q in reddit_queries[:4]]
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
+    with ThreadPoolExecutor(max_workers=min(10, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
             try: results += fut.result(timeout=15)
             except Exception as e: logger.error(f"[Step4] {e}")
@@ -2558,12 +2618,11 @@ def ra_step5_twitter(state: NicheResearchState) -> dict:
     ]
 
     results = []
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     tasks = [lambda q=q: research_tavily(q, 4) for q in social_queries]
     tasks += [lambda: research_duckduckgo(f"site:x.com {niche} viral 2026", 5)]
     tasks += [lambda: research_duckduckgo(f"site:linkedin.com {kw0} 2026", 4)]
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
+    with ThreadPoolExecutor(max_workers=min(10, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
             try: results += fut.result(timeout=15)
             except Exception as e: logger.error(f"[Step5] {e}")
@@ -2595,14 +2654,13 @@ def ra_step6_news(state: NicheResearchState) -> dict:
     ]
 
     results = []
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     tasks = []
     for q in news_queries:
         tasks.append(lambda q=q: research_google_news(q, 5))
         tasks.append(lambda q=q: research_bing_news(q, 4))
         tasks.append(lambda q=q: research_tavily(q, 3))
 
-    with ThreadPoolExecutor(max_workers=15) as ex:
+    with ThreadPoolExecutor(max_workers=min(12, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
             try: results += fut.result(timeout=20)
             except Exception as e: logger.error(f"[Step6] {e}")
@@ -2634,12 +2692,11 @@ def ra_step7_blogs(state: NicheResearchState) -> dict:
     ]
 
     results = []
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     tasks = [lambda q=q: research_tavily(q, 4) for q in deep_queries]
     tasks += [lambda: research_duckduckgo(f"{niche} expert blog 2026", 6)]
     tasks += [lambda: research_rss_blogs(keywords[:5], 8)]
 
-    with ThreadPoolExecutor(max_workers=12) as ex:
+    with ThreadPoolExecutor(max_workers=min(12, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
             try: results += fut.result(timeout=20)
             except Exception as e: logger.error(f"[Step7] {e}")
@@ -2675,14 +2732,13 @@ def ra_step8_forums(state: NicheResearchState) -> dict:
     ]
 
     results = []
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     tasks = [lambda q=q: research_tavily(q, 4) for q in community_queries]
     tasks += [lambda: research_hackernews(niche, 6)]
     tasks += [lambda: research_hackernews(kw0, 5)]
     tasks += [lambda: research_hackernews(kw1, 4)]
     tasks += [lambda: research_duckduckgo(f"site:quora.com {niche}", 5)]
 
-    with ThreadPoolExecutor(max_workers=12) as ex:
+    with ThreadPoolExecutor(max_workers=min(12, MAX_WORKERS_PER_REQUEST)) as ex:
         for fut in as_completed(ex.submit(fn) for fn in tasks):
             try: results += fut.result(timeout=15)
             except Exception as e: logger.error(f"[Step8] {e}")
@@ -3030,7 +3086,6 @@ def ra_formatter(state: NicheResearchState) -> dict:
         })
 
     # Run Google Trends validation concurrently
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     with ThreadPoolExecutor(max_workers=5) as ex:
         future_to_idea = {
             ex.submit(validate_idea_with_google_trends, idea["seo_keywords"]): idea
@@ -3104,7 +3159,49 @@ def build_research_agent_graph():
     return wf.compile()
 
 
-# ── Flask Route ───────────────────────────────────────────────────────────────
+# \u2500\u2500 Pre-compiled Research Agent graph singleton \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# Built once at import time so every request reuses the same compiled graph.
+try:
+    _RESEARCH_GRAPH = build_research_agent_graph()
+    logger.info("[Startup] Research agent graph pre-compiled successfully")
+except Exception as _e:
+    logger.error(f"[Startup] Failed to pre-compile research graph: {_e}")
+    _RESEARCH_GRAPH = None
+
+# Request timeout for the full research pipeline (seconds).
+# Prevents any single request from hanging a worker indefinitely.
+_RESEARCH_TIMEOUT_SECONDS = int(os.environ.get("RESEARCH_TIMEOUT", "270"))
+
+
+def _invoke_graph_with_timeout(graph, initial_state, timeout_secs: int = _RESEARCH_TIMEOUT_SECONDS):
+    """Run graph.invoke() in a separate thread so we can enforce a wall-clock timeout.
+    Raises TimeoutError if the graph doesn't finish in time.
+    """
+    result_holder = {}
+    exc_holder = {}
+
+    def _run():
+        try:
+            result_holder["result"] = graph.invoke(initial_state)
+        except Exception as exc:
+            exc_holder["exc"] = exc
+
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(_run)
+        try:
+            fut.result(timeout=timeout_secs)
+        except FutureTimeoutError:
+            raise TimeoutError(
+                f"Research pipeline exceeded {timeout_secs}s limit. "
+                "Try a more focused niche or check API connectivity."
+            )
+
+    if "exc" in exc_holder:
+        raise exc_holder["exc"]
+    return result_holder.get("result", {})
+
+
+
 @app.route("/api/research-agent", methods=["POST"])
 @limiter.limit("3 per minute")
 def research_agent_route():
@@ -3164,8 +3261,8 @@ def research_agent_route():
     )
 
     try:
-        graph  = build_research_agent_graph()
-        result = graph.invoke(initial_state)
+        graph  = _RESEARCH_GRAPH or build_research_agent_graph()
+        result = _invoke_graph_with_timeout(graph, initial_state)
 
         ideas         = result.get("final_ideas", [])
         trend_summary = result.get("trend_summary", "")
@@ -3668,6 +3765,15 @@ def trending_ideas():
     if timeframe not in TIMEFRAME_MAP:
         timeframe = "28d"
 
+    # \u2500\u2500 Cache lookup \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # Same channel + timeframe within 1 hour returns instantly from cache.
+    _cache_key = "trending:" + hashlib.sha256(f"{raw_input}|{timeframe}".encode()).hexdigest()
+    cached = cache.get(_cache_key)
+    if cached:
+        logger.info(f"[TrendingIdeas] \u2705 Cache HIT for '{raw_input[:60]}' ({timeframe})")
+        return jsonify(cached)
+    logger.info(f"[TrendingIdeas] Cache MISS for '{raw_input[:60]}' ({timeframe}) \u2014 running full pipeline")
+
     if not raw_input:
         return jsonify({"error": "channel_url is required"}), 400
     if len(raw_input) > 500:
@@ -3812,8 +3918,8 @@ def trending_ideas():
     )
 
     try:
-        graph  = build_research_agent_graph()
-        result = graph.invoke(initial_state)
+        graph  = _RESEARCH_GRAPH or build_research_agent_graph()
+        result = _invoke_graph_with_timeout(graph, initial_state)
 
         ideas         = result.get("final_ideas", [])
         trend_summary = result.get("trend_summary", "")
@@ -3842,7 +3948,7 @@ def trending_ideas():
         if not ideas or len(ideas) == 0:
             logger.warning("[TrendingIdeas] No ideas generated — returning empty list with trend_summary")
 
-        return jsonify({
+        _response_payload = {
             "ideas":         ideas,
             "trend_summary": trend_summary,
             "step_counts":   step_counts,
@@ -3860,7 +3966,14 @@ def trending_ideas():
                 "step7_blogs":     result.get("step7_blogs", [])[:10],
                 "step8_forums":    result.get("step8_forums", [])[:10],
             }
-        })
+        }
+
+        # Store in cache so subsequent users with same input get instant result
+        if ideas:
+            cache.set(_cache_key, _response_payload, timeout=3600)
+            logger.info(f"[TrendingIdeas] Result cached for 1 hour (key={_cache_key[:16]}...)")
+
+        return jsonify(_response_payload)
 
     except Exception as exc:
         traceback.print_exc()
@@ -4067,7 +4180,7 @@ def analyze_thumbnail():
     }
 
     try:
-        resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
+        resp = _session.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
         resp_data = resp.json()
 
         if "error" in resp_data:
