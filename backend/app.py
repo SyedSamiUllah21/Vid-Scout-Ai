@@ -240,7 +240,7 @@ def resolve_channel_id_from_input(input_str: str, youtube) -> str:
     if video_id:
         try:
             logger.info(f"[Resolve] Input is video ID/URL. Fetching video info for ID: {video_id}")
-            v_resp = youtube.videos().list(part="snippet", id=video_id).execute()
+            v_resp = youtube.videos().list(part="snippet", id=video_id).execute(num_retries=0)
             if v_resp.get("items"):
                 channel_id = v_resp["items"][0]["snippet"]["channelId"]
                 logger.info(f"[Resolve] Found channel ID from video: {channel_id}")
@@ -259,7 +259,7 @@ def resolve_channel_id_from_input(input_str: str, youtube) -> str:
     if handle_match:
         handle = "@" + handle_match.group(1)
         try:
-            ch_resp = youtube.channels().list(part="id", forHandle=handle).execute()
+            ch_resp = youtube.channels().list(part="id", forHandle=handle).execute(num_retries=0)
             if ch_resp.get("items"):
                 return ch_resp["items"][0]["id"]
         except Exception as e:
@@ -270,7 +270,7 @@ def resolve_channel_id_from_input(input_str: str, youtube) -> str:
     if user_match:
         username = user_match.group(1)
         try:
-            ch_resp = youtube.channels().list(part="id", forUsername=username).execute()
+            ch_resp = youtube.channels().list(part="id", forUsername=username).execute(num_retries=0)
             if ch_resp.get("items"):
                 return ch_resp["items"][0]["id"]
         except Exception as e:
@@ -282,7 +282,7 @@ def resolve_channel_id_from_input(input_str: str, youtube) -> str:
         logger.info(f"[Resolve] Searching channel name: {input_str}")
         search_resp = youtube.search().list(
             part="id", q=input_str, type="channel", maxResults=1
-        ).execute()
+        ).execute(num_retries=0)
         if search_resp.get("items"):
             channel_id = search_resp["items"][0]["id"]["channelId"]
             logger.info(f"[Resolve] Resolved channel name to ID: {channel_id}")
@@ -295,7 +295,7 @@ def resolve_channel_id_from_input(input_str: str, youtube) -> str:
         logger.info(f"[Resolve] Searching video title: {input_str}")
         search_resp = youtube.search().list(
             part="snippet", q=input_str, type="video", maxResults=1
-        ).execute()
+        ).execute(num_retries=0)
         if search_resp.get("items"):
             channel_id = search_resp["items"][0]["snippet"]["channelId"]
             logger.info(f"[Resolve] Resolved video title search to channel ID: {channel_id}")
@@ -332,7 +332,7 @@ def scrape_channel_page(channel_url: str) -> dict:
                 raise ValueError(f"Could not resolve channel ID for input: {channel_url}")
 
             logger.info(f"[Scraper][API] Querying channel details for ID: {channel_id}")
-            ch_resp = youtube.channels().list(part="snippet,statistics,contentDetails", id=channel_id).execute()
+            ch_resp = youtube.channels().list(part="snippet,statistics,contentDetails", id=channel_id).execute(num_retries=0)
 
             if ch_resp and ch_resp.get("items"):
                 item = ch_resp["items"][0]
@@ -355,7 +355,7 @@ def scrape_channel_page(channel_url: str) -> dict:
                     try:
                         pl_resp = youtube.playlistItems().list(
                             part="snippet", playlistId=uploads_id, maxResults=10
-                        ).execute()
+                        ).execute(num_retries=0)
                         video_titles = [
                             pl_item["snippet"]["title"]
                             for pl_item in pl_resp.get("items", [])
@@ -371,7 +371,7 @@ def scrape_channel_page(channel_url: str) -> dict:
                         api_resp = youtube.search().list(
                             part="snippet", channelId=channel_id,
                             maxResults=10, order="date", type="video"
-                        ).execute()
+                        ).execute(num_retries=0)
                         video_titles = [v_item["snippet"]["title"] for v_item in api_resp.get("items", []) if v_item["snippet"].get("title")]
                     except Exception as search_err:
                         logger.error(f"[Scraper][API] Search recent video fetch failed: {search_err}")
@@ -829,7 +829,7 @@ def research_youtube_videos(query: str, max_results: int = 8, timeframe: str = "
             resp = youtube.search().list(
                 part="snippet", q=query, type="video",
                 order="viewCount", publishedAfter=after, maxResults=max_results,
-            ).execute()
+            ).execute(num_retries=0)
             for item in resp.get("items", []):
                 vid_id = item["id"].get("videoId", "")
                 snip   = item.get("snippet", {})
@@ -2087,28 +2087,35 @@ def explore_keyword_node(keyword: str) -> dict:
         suggestions = []
 
     # 2. Fetch Real Search Stats using YouTube API
-    yt_key = get_youtube_api_key()
+    yt_keys = get_youtube_api_keys()
     total_results = "Unknown"
     avg_views = "Unknown"
     
-    if yt_key:
-        try:
-            from googleapiclient.discovery import build
-            youtube = build("youtube", "v3", developerKey=yt_key)
-            search_req = youtube.search().list(q=keyword, part="snippet", type="video", maxResults=5)
-            search_res = search_req.execute()
-            
-            total_results = search_res.get("pageInfo", {}).get("totalResults", "Unknown")
-            
-            video_ids = [item["id"]["videoId"] for item in search_res.get("items", []) if "id" in item and "videoId" in item["id"]]
-            if video_ids:
-                stats_req = youtube.videos().list(id=",".join(video_ids), part="statistics")
-                stats_res = stats_req.execute()
-                views = [int(item["statistics"]["viewCount"]) for item in stats_res.get("items", []) if "viewCount" in item.get("statistics", {})]
-                if views:
-                    avg_views = int(sum(views) / len(views))
-        except Exception as e:
-            logger.error(f"[KeywordExplore] YouTube API failed: {e}")
+    if yt_keys:
+        for key_idx, yt_key in enumerate(yt_keys, 1):
+            try:
+                from googleapiclient.discovery import build
+                youtube = build("youtube", "v3", developerKey=yt_key)
+                search_req = youtube.search().list(q=keyword, part="snippet", type="video", maxResults=5)
+                search_res = search_req.execute(num_retries=0)
+                
+                total_results = search_res.get("pageInfo", {}).get("totalResults", "Unknown")
+                
+                video_ids = [item["id"]["videoId"] for item in search_res.get("items", []) if "id" in item and "videoId" in item["id"]]
+                if video_ids:
+                    stats_req = youtube.videos().list(id=",".join(video_ids), part="statistics")
+                    stats_res = stats_req.execute(num_retries=0)
+                    views = [int(item["statistics"]["viewCount"]) for item in stats_res.get("items", []) if "viewCount" in item.get("statistics", {})]
+                    if views:
+                        avg_views = int(sum(views) / len(views))
+                break # Success
+            except Exception as e:
+                err_str = str(e).lower()
+                if any(k in err_str for k in ["quota", "rate", "limit", "403", "exceeded"]) and key_idx < len(yt_keys):
+                    logger.info(f"[KeywordExplore] Key {key_idx} quota/rate limited. Trying next...")
+                    continue
+                logger.error(f"[KeywordExplore] YouTube API failed: {e}")
+                break
 
     real_data_block = f"Real YouTube Autocomplete Suggestions:\n{', '.join(suggestions) if suggestions else 'None found.'}\n\nSeed Keyword '{keyword}' Search Stats:\n- Total YouTube Search Results (Proxy for Competition): {total_results}\n- Average Views of Top 5 Videos (Proxy for Search Volume): {avg_views}"
 
@@ -2172,7 +2179,7 @@ def validate_niche_node(niche: str) -> dict:
                     type="video",
                     order="relevance",
                     maxResults=10
-                ).execute()
+                ).execute(num_retries=0)
                 
                 video_ids = [item["id"]["videoId"] for item in search_resp.get("items", []) if "videoId" in item["id"]]
                 
@@ -2180,7 +2187,7 @@ def validate_niche_node(niche: str) -> dict:
                     videos_resp = youtube.videos().list(
                         part="statistics,snippet",
                         id=",".join(video_ids)
-                    ).execute()
+                    ).execute(num_retries=0)
                     
                     total_views = 0
                     total_likes = 0
@@ -3217,7 +3224,7 @@ def views_trend():
                 channel_resp = youtube.channels().list(
                     part="statistics,snippet",
                     id=channel_id
-                ).execute()
+                ).execute(num_retries=0)
                 channel_items = channel_resp.get("items", [])
                 if channel_items:
                     c_stat = channel_items[0].get("statistics", {})
@@ -3243,7 +3250,7 @@ def views_trend():
                             playlistId=uploads_playlist_id,
                             maxResults=50,
                             pageToken=next_page_token
-                        ).execute()
+                        ).execute(num_retries=0)
                         items = pl_resp.get("items", [])
                         if not items:
                             break
@@ -3273,7 +3280,7 @@ def views_trend():
                             type="video",
                             maxResults=50,
                             pageToken=next_page_token
-                        ).execute()
+                        ).execute(num_retries=0)
                         items = search_resp.get("items", [])
                         if not items:
                             break
@@ -3300,7 +3307,7 @@ def views_trend():
                     videos_resp = youtube.videos().list(
                         part="snippet,statistics",
                         id=",".join(batch_ids)
-                    ).execute()
+                    ).execute(num_retries=0)
                 
                     for v in videos_resp.get("items", []):
                         pub_date = v["snippet"]["publishedAt"][:10]  # YYYY-MM-DD
@@ -3452,7 +3459,7 @@ def channel_insights():
                         part="contentDetails",
                         playlistId=uploads_playlist_id,
                         maxResults=50
-                    ).execute()
+                    ).execute(num_retries=0)
                     video_ids = [item["contentDetails"]["videoId"] for item in pl_resp.get("items", []) if item.get("contentDetails", {}).get("videoId")]
                 except Exception as pl_err:
                     pass
@@ -3464,7 +3471,7 @@ def channel_insights():
                     order="date",
                     type="video",
                     maxResults=50
-                ).execute()
+                ).execute(num_retries=0)
                 video_ids = [item["id"]["videoId"] for item in search_resp.get("items", []) if item.get("id", {}).get("videoId")]
 
             if not video_ids:
@@ -3473,7 +3480,7 @@ def channel_insights():
             videos_resp = youtube.videos().list(
                 part="snippet,statistics",
                 id=",".join(video_ids)
-            ).execute()
+            ).execute(num_retries=0)
 
             videos = []
             for v in videos_resp.get("items", []):
@@ -3556,12 +3563,12 @@ def channel_insights():
             try:
                 top_search = youtube.search().list(
                     part="id", channelId=channel_id, order="viewCount", type="video", maxResults=1
-                ).execute()
+                ).execute(num_retries=0)
                 if top_search.get("items"):
                     top_video_id = top_search["items"][0]["id"]["videoId"]
                     top_vid_resp = youtube.videos().list(
                         part="snippet,statistics", id=top_video_id
-                    ).execute()
+                    ).execute(num_retries=0)
                     if top_vid_resp.get("items"):
                         top_v = top_vid_resp["items"][0]
                         viral_video = {
@@ -3700,7 +3707,7 @@ def trending_ideas():
                             type="video",
                             publishedAfter=published_after,
                             maxResults=15
-                        ).execute()
+                        ).execute(num_retries=0)
                         titles_in_window = [
                             item["snippet"]["title"]
                             for item in search_resp.get("items", [])
