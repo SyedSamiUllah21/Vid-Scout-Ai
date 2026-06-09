@@ -150,6 +150,11 @@ def parse_llm_json(content: str, context: str = "LLM response"):
 
 app = Flask(__name__)
 
+@app.route("/")
+def health_check():
+    return jsonify({"status": "ok", "message": "Vid Scout AI Backend is running!"}), 200
+
+
 # ── CORS — allow all origins (frontend is on a separate domain) ──────────────
 CORS(app, resources={r"/api/*": {"origins": "*"},
                      r"/analyze": {"origins": "*"}})
