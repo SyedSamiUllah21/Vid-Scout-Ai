@@ -3122,16 +3122,15 @@ def ra_formatter(state: NicheResearchState) -> dict:
 # ── Build LangGraph for the Research Agent ────────────────────────────────────
 def build_research_agent_graph():
     """
-    Graph topology:
-      step1 → step2 → step3 → step4 → step5 → step6 → step7 → step8
+    Graph topology (PARALLELIZED):
+      init → [step1, step2, step3, step4, step5, step6, step7, step8] (parallel)
            → aggregator → synthesizer → formatter → END
-    Steps 1-8 run sequentially to respect API rate limits; aggregation +
-    synthesis run after all data is collected.
+    Steps 1-8 run concurrently because they hit different domains/APIs, reducing wait time drastically.
     """
     wf = StateGraph(NicheResearchState)
 
-    # UPDATED ORDER: TikTok/Instagram FIRST
-    wf.add_node("step1_shortform", ra_step1_shortform)  # TikTok/Instagram TOP PRIORITY
+    wf.add_node("init",            lambda state: {})
+    wf.add_node("step1_shortform", ra_step1_shortform)
     wf.add_node("step2_youtube",   ra_step2_youtube)
     wf.add_node("step3_trends",    ra_step3_trends)
     wf.add_node("step4_reddit",    ra_step4_reddit)
@@ -3143,15 +3142,13 @@ def build_research_agent_graph():
     wf.add_node("synthesizer",     ra_synthesizer)
     wf.add_node("formatter",       ra_formatter)
 
-    wf.set_entry_point("step1_shortform")  # START with TikTok/Instagram
-    wf.add_edge("step1_shortform", "step2_youtube")
-    wf.add_edge("step2_youtube",   "step3_trends")
-    wf.add_edge("step3_trends",    "step4_reddit")
-    wf.add_edge("step4_reddit",    "step5_twitter")
-    wf.add_edge("step5_twitter",   "step6_news")
-    wf.add_edge("step6_news",      "step7_blogs")
-    wf.add_edge("step7_blogs",     "step8_forums")
-    wf.add_edge("step8_forums",    "aggregator")
+    wf.set_entry_point("init")
+    
+    # Fan-out: run all 8 steps in parallel
+    for step in ["step1_shortform", "step2_youtube", "step3_trends", "step4_reddit", 
+                 "step5_twitter", "step6_news", "step7_blogs", "step8_forums"]:
+        wf.add_edge("init", step)
+        wf.add_edge(step, "aggregator")
     wf.add_edge("aggregator",      "synthesizer")
     wf.add_edge("synthesizer",     "formatter")
     wf.add_edge("formatter",       END)
